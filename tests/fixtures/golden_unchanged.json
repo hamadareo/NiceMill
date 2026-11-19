@@ -1,0 +1,24 @@
+{
+ "school": {
+  "contribution": {
+   "prompt_hash": "ea8b0e5292e2",
+   "user_text": "【活動の内容・データ開始】\n紙で塔を作る\n【活動の内容・データ終了】\n\n【ルーブリック・データ開始】\n協力する\n【ルーブリック・データ終了】\n\n【行動イベント・データ開始】\nref_id: cam1-0001\n時刻: 00:10\n行動: 紙を折る\n発話: なし\n\nref_id: cam1-0002\n時刻: 00:15\n行動: 塔を支える\n発話: なし\n【行動イベント・データ終了】"
+  },
+  "pfb": {
+   "prompt_hash": "a79ec14c84c7",
+   "user_text": "【活動の内容・データ開始】\n紙で塔を作る\n【活動の内容・データ終了】\n\n【貢献ありと判定された行動イベント・データ開始】\nref_id: cam1-0001\n時刻: 00:10\n行動: 紙を折る\n発話: なし\n貢献の解釈: 解釈\n【貢献ありと判定された行動イベント・データ終了】"
+  },
+  "registry": "video_id: s1_cam1\npath: c.mp4\ndomain: generic\nactivity: 紙で塔を作る\nstart_s: 1.0\nend_s: null\nmax_people: null\ntranscript: false\ncamera_notes: ''\n"
+ },
+ "sports": {
+  "contribution": {
+   "prompt_hash": "2151cc626610",
+   "user_text": "【競技・データ開始】\nサッカー\n【競技・データ終了】\n\n【試合・練習の内容・データ開始】\n紙で塔を作る\n【試合・練習の内容・データ終了】\n\n【見てほしい観点・データ開始】\n協力する\n【見てほしい観点・データ終了】\n\n【行動イベント・データ開始】\nref_id: cam1-0001\n動画の時間: 00:10（1分未満）\n行動: 紙を折る\n発話: なし\n\nref_id: cam1-0002\n動画の時間: 00:15（1分未満）\n行動: 塔を支える\n発話: なし\n【行動イベント・データ終了】"
+  },
+  "pfb": {
+   "prompt_hash": "3173e88ff435",
+   "user_text": "【競技・データ開始】\nサッカー\n【競技・データ終了】\n\n【試合・練習の内容・データ開始】\n紙で塔を作る\n【試合・練習の内容・データ終了】\n\n【貢献ありと判定された行動イベント・データ開始】\nref_id: cam1-0001\n動画の時間: 00:10（1分未満）\n行動: 紙を折る\n発話: なし\n貢献の解釈: 解釈\n【貢献ありと判定された行動イベント・データ終了】"
+  },
+  "registry": "video_id: s1_cam1\npath: c.mp4\ndomain: sports\nactivity: 紙で塔を作る\nstart_s: 1.0\nend_s: null\nmax_people: null\ntranscript: false\ncamera_notes: ''\nsport: soccer\ntarget: person\n"
+ }
+}

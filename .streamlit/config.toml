@@ -1,0 +1,80 @@
+# Streamlit settings for the PFB app (read from the working directory ~/pfb_app).
+[browser]
+# Do not send usage statistics outside the server.
+gatherUsageStats = false
+
+[server]
+# Serve src/pfb_app/ui/static (the vendored fonts) at app/static/, so nothing is loaded
+# from the internet.
+enableStaticServing = true
+
+[client]
+# Only the menu items an operator sets: no "Deploy" button or developer menu in English.
+toolbarMode = "minimal"
+# No tracebacks or error texts in the browser (they stay in ui.log): accounts lane review.
+showErrorDetails = "none"
+
+# ナイスミル theme 「A コートサイド」: court navy structure, ball-orange primary action, amber
+# numbers on navy (tokens in src/pfb_app/ui/wizard/theme.py; the fonts are vendored, SIL OFL).
+[theme]
+base = "light"
+primaryColor = "#C8410C"
+backgroundColor = "#EDF1F6"
+secondaryBackgroundColor = "#E1E7EF"
+textColor = "#13202F"
+linkColor = "#0F2D5C"
+borderColor = "#C9D2DE"
+buttonRadius = "6px"
+font = "M PLUS 1, sans-serif"
+headingFont = "Dela Gothic One, M PLUS 1, sans-serif"
+# Dela Gothic One has one weight: headings are never made bold on top of it
+headingFontWeights = 400
+
+[theme.sidebar]
+backgroundColor = "#0F2D5C"
+secondaryBackgroundColor = "#21477F"
+textColor = "#FFFFFF"
+borderColor = "#2A4C82"
+linkColor = "#FFFFFF"
+
+[[theme.fontFaces]]
+family = "M PLUS 1"
+url = "app/static/fonts/MPLUS1-Regular.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "M PLUS 1"
+url = "app/static/fonts/MPLUS1-Medium.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "M PLUS 1"
+url = "app/static/fonts/MPLUS1-Bold.woff2"
+weight = 700
+style = "normal"
+
+[[theme.fontFaces]]
+family = "M PLUS 1"
+url = "app/static/fonts/MPLUS1-ExtraBold.woff2"
+weight = 800
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Dela Gothic One"
+url = "app/static/fonts/DelaGothicOne-Regular.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow Condensed"
+url = "app/static/fonts/BarlowCondensed-SemiBold.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow Condensed"
+url = "app/static/fonts/BarlowCondensed-Bold.woff2"
+weight = 700
+style = "normal"

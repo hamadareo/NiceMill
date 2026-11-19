@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+{% if screen %}<meta name="viewport" content="width=device-width, initial-scale=1">
+{% endif %}
+<title>{{ page_title }}</title>
+<style>
+{% if not screen %}
+@page {
+  size: A4;
+  margin: 15mm 16mm 17mm;
+  @bottom-left { content: {% if brand_mark %}url("{{ src(brand_mark) }}") "\2002{{ brand_name }}\2003" {% endif %}{% block footer_content %}"{{ footer }}"{% endblock %}; font-family: "Noto Sans CJK JP"; font-size: 7.5pt; color: #59606b; }
+  @bottom-right { content: counter(page) " / " counter(pages); font-family: "Noto Sans CJK JP"; font-size: 7.5pt; color: #59606b; }
+}
+{% endif %}
+html { font-family: "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 10pt; line-height: 1.65; color: #23272e; background: #ffffff; }
+body { margin: 0; background: #ffffff; }
+.serif { font-family: "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", serif; }
+.masthead { display: flex; justify-content: space-between; align-items: center; font-size: 8.5pt; color: #59606b; padding-bottom: 2.6mm; border-bottom: 0.6pt solid #dfe3e8; margin-bottom: 5.5mm; }
+.masthead .org { display: flex; align-items: center; color: #23272e; font-weight: bold; }
+.masthead .logo { height: 9mm; max-width: 42mm; object-fit: contain; margin-right: 2.6mm; }
+.masthead .work { text-align: right; margin-left: 6mm; }
+.masthead .work b { color: #23272e; display: block; font-size: 9.5pt; }
+.person { display: flex; align-items: center; margin-bottom: 5.5mm; }
+.photo, .monogram { flex: none; width: 26mm; height: 26mm; border-radius: 4mm; margin-right: 6mm; }
+.photo { object-fit: cover; border: 0.6pt solid #dfe3e8; }
+.monogram { background: #f2f4f7; color: {{ accent }}; font-size: 22pt; line-height: 26mm; text-align: center; }
+h1.name { font-size: 26pt; line-height: 1.25; margin: 0; font-weight: bold; }
+h1.name .to { font-size: 13pt; font-weight: normal; color: #59606b; margin-left: 1.2mm; }
+.person .sub { margin: 1.5mm 0 0; color: #59606b; font-size: 9pt; }
+.letter { font-size: 13.5pt; line-height: 1.9; border-left: 2.4pt solid {{ accent }}; padding: 0.5mm 0 0.5mm 6mm; margin: 0 0 6mm; white-space: pre-wrap; max-width: 160mm; }
+.tips { page-break-inside: avoid; }
+ul.tip-list { margin: 0 0 4mm; padding: 0.5mm 0 0.5mm 6mm; list-style: none; border-left: 2.4pt solid {{ accent }}; max-width: 160mm; }
+ul.tip-list li { font-size: 12pt; line-height: 1.8; margin: 0 0 1.6mm; }
+h2 { font-size: 11.5pt; color: {{ accent }}; margin: 5.5mm 0 2.5mm; page-break-after: avoid; }
+h3 { font-size: 10pt; margin: 4mm 0 1.5mm; page-break-after: avoid; }
+.block { page-break-inside: avoid; }
+.moments { display: flex; flex-wrap: wrap; }
+figure.moment { margin: 0 4.66mm 4mm 0; page-break-inside: avoid; }
+figure.moment:last-child { margin-right: 0; }
+.moments.n4 figure.moment { width: 41mm; }
+.moments.n3 figure.moment { width: 50mm; }
+.moments.n2 figure.moment { width: 54mm; }
+.moments.n1 figure.moment { width: 60mm; }
+.moment .frame { background: #f2f4f7; border-radius: 3mm; overflow: hidden; }
+.moment .frame img { display: block; width: 100%; height: auto; }
+figcaption { margin-top: 2mm; display: flex; align-items: flex-start; }
+.num { flex: none; width: 5.4mm; height: 5.4mm; border-radius: 50%; background: {{ accent }}; color: #ffffff; font-weight: bold; font-size: 8.5pt; line-height: 5.4mm; text-align: center; margin-right: 2.4mm; }
+.when { display: block; font-weight: bold; font-size: 8.5pt; color: #59606b; }
+.what { font-size: 10pt; }
+ul.moment-list { list-style: none; margin: 0; padding: 0; }
+ul.moment-list li { padding: 1.6mm 0; border-bottom: 0.5pt solid #e6e9ee; page-break-inside: avoid; }
+ul.moment-list .why { display: block; color: #59606b; font-size: 9pt; }
+.pair { display: flex; align-items: flex-start; }
+.pair > .block { flex: 1 1 0; min-width: 0; }
+.pair > .block + .block { margin-left: 8mm; }
+.chart svg { display: block; max-width: 100%; height: auto; }
+.glyph { vertical-align: -1.5pt; }
+.note { font-size: 8.5pt; color: #59606b; margin: 1.5mm 0 0; }
+.stat { font-size: 12pt; font-weight: bold; margin: 1mm 0; }
+.stat small { font-size: 9pt; font-weight: normal; color: #59606b; margin-left: 1mm; }
+.handout + .handout { page-break-before: always; }
+.growthpage { page-break-before: always; }
+.growthpage h1.name { font-size: 20pt; margin-bottom: 4mm; }
+ul.growth-lines { margin: 0 0 4mm; padding-left: 5mm; font-size: 11pt; }
+ul.growth-lines li { margin: 0 0 1.4mm; }
+.footline { string-set: footer attr(data-footer); }
+{% block style %}{% endblock %}
+{% if screen %}
+html { font-size: 16px; }
+body { max-width: 680px; margin: 0 auto; padding: 16px 16px 40px; }
+.masthead { font-size: 13px; margin-bottom: 20px; padding-bottom: 10px; }
+.masthead .logo { height: 32px; max-width: 140px; }
+.masthead .work b { font-size: 14px; }
+.person { margin-bottom: 20px; }
+.photo, .monogram { width: 88px; height: 88px; border-radius: 12px; margin-right: 16px; }
+.monogram { line-height: 88px; font-size: 34px; }
+h1.name { font-size: 30px; }
+h1.name .to { font-size: 16px; }
+.letter { font-size: 19px; line-height: 1.95; padding-left: 16px; border-left-width: 4px; margin-bottom: 28px; }
+ul.tip-list { padding-left: 16px; border-left-width: 4px; margin-bottom: 20px; }
+ul.tip-list li { font-size: 17px; line-height: 1.8; }
+h2 { font-size: 17px; margin: 28px 0 10px; }
+.moments figure.moment { width: calc(50% - 6px); margin: 0 12px 18px 0; }
+.moments figure.moment:nth-child(2n) { margin-right: 0; }
+.moments.n1 figure.moment { width: 70%; }
+.moment .frame { border-radius: 10px; }
+.num { width: 22px; height: 22px; line-height: 22px; font-size: 13px; margin-right: 8px; }
+.when { font-size: 13px; }
+.what { font-size: 16px; }
+.pair { display: block; }
+.pair > .block + .block { margin: 16px 0 0; }
+.note { font-size: 13px; }
+.stat { font-size: 18px; }
+.growthpage { margin-top: 40px; padding-top: 16px; border-top: 1px solid #dfe3e8; }
+ul.growth-lines { font-size: 16px; padding-left: 20px; }
+footer.share { margin-top: 32px; padding-top: 12px; border-top: 1px solid #dfe3e8; font-size: 12px; color: #59606b; }
+{% endif %}
+</style></head><body>
+{% block body %}{% endblock %}
+</body></html>

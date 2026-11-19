@@ -1,0 +1,23 @@
+{% extends "_base.html.j2" %}
+{% import "_blocks.html.j2" as b %}
+{# each handout's own footer (a person's check or 自動で承認), set by its .footline #}
+{% block footer_content %}string(footer, first){% endblock %}
+{% block body %}
+{% for p in people %}
+<article class="handout">
+{% if not screen %}<i class="footline" data-footer="{{ p.footer }}"></i>{% endif %}
+{{ b.masthead(org, title, date, src) }}
+<section class="person">
+{{ b.portrait(p, src, accent) }}
+<div><h1 class="name serif">{{ p.name }}<span class="to">さんへ</span></h1>
+<p class="sub">{{ words.work }}「{{ title }}」のふりかえり</p></div>
+</section>
+{{ b.letter(p) }}
+{{ b.tips(p) }}
+{{ b.pictures(p, video, src) }}
+{{ b.charts(p, words) }}
+{% if screen %}<footer class="share">{{ p.footer }}</footer>{% endif %}
+</article>
+{% if p.growth %}{{ b.growth(p, p.growth, org, title, date, src, screen) }}{% endif %}
+{% endfor %}
+{% endblock %}

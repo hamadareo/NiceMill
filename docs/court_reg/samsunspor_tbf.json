@@ -1,0 +1,15 @@
+{
+  "clip": "Samsunspor TBF (CC BY 3.0), the first 180 s",
+  "ref_t": 20.0,
+  "note": "registered by looking at a mosaic of the clip's own pictures (all pictures warped to the reference at t=20 s); the court is the 28 x 15 m playing floor",
+  "corners_ref": [[104.2, 300.4], [1349.2, 350.4], [2004.2, 770.4], [-665.8, 550.4]],
+  "corners_order": "far-left, far-right, near-right, near-left (as seen from the camera)",
+  "basis": [
+    "far sideline: the edge between the wood floor and the dark blue strip under the advertising boards (read on the mosaic at about x 667..1350 of the mosaic)",
+    "left end line: the inner edge (court side) of the white sponsor band with the green logos on the left blue strip",
+    "right end line: the court-side edge of the right blue strip's white band with the green logos",
+    "near sideline: the edge between the wood floor and the blue apron (printed with the university name) at the camera side",
+    "corners: the intersections of those four lines; the near corners and the far-left corner lie outside most pictures, so only the visible parts of the edges are drawn",
+    "known uncertainty: about 1 m on the end lines (the band is about 1 m wide); the near sideline was read on blurred mosaic pixels"
+  ]
+}

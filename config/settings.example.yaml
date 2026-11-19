@@ -1,0 +1,70 @@
+# Example settings. Copy to config/settings.yaml (or point PFB_CONFIG at your copy) and edit.
+# Nothing here is a real machine address; paths are relative to the working directory.
+backend: transformers
+host: 127.0.0.1   # bind address; 127.0.0.1 = this computer only
+port: 8501
+data_dir: ./data
+inbox_dir: ./inbox
+prompts_dir: ./prompts
+models:
+  standard:
+    hf_id: Qwen/Qwen3-VL-8B-Instruct
+    budget_gb: 24
+    max_model_len: 32768
+  high:
+    hf_id: Qwen/Qwen3-VL-32B-Instruct-FP8
+    budget_gb: 52
+    max_model_len: 32768
+whisper_model: mobiuslabsgmbh/faster-whisper-large-v3-turbo
+whisper_budget_gb: 6
+start_margin_gb: 8
+yield_threshold_gb: 6
+gpu_poll_sec: 180
+session_idle_sec: 300
+stale_job_sec: 900
+frame_interval_sec: 5
+frame_size: [854, 480]
+frames_per_chunk: 5
+identity_sample_points: 3
+doc_page_image_long_edge: 1280
+doc_max_page_images: 20
+low_text_chars: 50
+max_retries: 2
+max_upload_mb: 4096
+max_tokens:
+  prepare: 4096
+  transcribe: 4096
+  track: 4096
+  identity: 4096
+  behavior: 4096
+  evidence: 4096
+  contribution: 4096
+  pfb: 4096
+engine_dir: ./engines/pfb3x3
+engine_python: null
+tracker_python: null
+whisper_python: null
+track_budget_gb: 4
+track_cpu_fallback: false
+track_cpu_after_sec: 1200
+pfb3x3_budget_gb:
+  standard: 34
+  high: 60
+pfb3x3_condition: clip_som
+pfb3x3_port: 8200
+# sports works: read every person's number on the GPU and name automatic people
+# 「#10」 / 「10号車」 (false: the cue gate alone decides)
+number_names: true
+engine_timeout_sec: 21600
+# operations (pfb_app.ops): low-disk guard, nightly backups, log files, alerts, automatic retry
+disk_warn_gb: 50
+disk_refuse_gb: 15
+backup_dir: null           # null: <data_dir>/../backups
+backup_keep: 14            # nightly backups kept (days)
+backup_keep_weekly: 4      # then the newest of each of 4 further weeks (so at most 42 days)
+log_dir: null              # null: <data_dir>/logs
+log_max_mb: 10
+log_keep: 5
+alert_webhook_file: null   # a file holding a webhook URL (mode 600); null: log only
+alert_repeat_sec: 3600
+auto_retry: true

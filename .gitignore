@@ -1,0 +1,42 @@
+# data and runtime state
+data/
+inbox/
+backups/
+results/
+engines/
+runs/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+logs/
+# media (never commit videos, frames or participant material)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.m4v
+# model weights
+*.pt
+*.pth
+*.gguf
+*.onnx
+*.safetensors
+*.bin
+# secrets and local config
+.env
+.env.*
+*.pem
+*.key
+*webhook*
+config/settings.local.yaml
+settings.yaml.pre-*
+# python / tools
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+.DS_Store

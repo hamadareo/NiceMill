@@ -1,0 +1,129 @@
+{# The blocks both PDFs and the share page are made of. A block with nothing recorded is not
+   drawn at all (no empty charts, no placeholders). #}
+
+{% macro masthead(org, title, date, src) %}
+<header class="masthead">
+  <div class="org">{% if org.logo %}<img class="logo" src="{{ src(org.logo) }}" alt="{{ org.name or 'ロゴ' }}">{% endif %}{% if org.name %}<span>{{ org.name }}</span>{% endif %}</div>
+  <div class="work"><b>{{ title }}</b>{% if date %}<span>{{ date }}</span>{% endif %}</div>
+</header>
+{% endmacro %}
+
+{% macro portrait(p, src, accent) %}
+{% if p.photo %}<img class="photo" src="{{ src(p.photo) }}" alt="{{ p.name }}">{% else %}<div class="monogram serif" aria-hidden="true">{{ p.initial }}</div>{% endif %}
+{% endmacro %}
+
+{% macro letter(p) %}
+<div class="letter serif">{{ p.text }}</div>
+{% endmacro %}
+
+{# 次にためしてみること: only what the coach confirmed (services.tips); nothing is drawn without it #}
+{% macro tips(p) %}
+{% if p.tips %}
+<section class="tips">
+<h2>次にためしてみること</h2>
+<ul class="tip-list">
+{% for t in p.tips %}<li>{{ t }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+{% if p.team_tips %}
+<section class="tips">
+<h2>{{ p.team_title }}</h2>
+<ul class="tip-list">
+{% for t in p.team_tips %}<li>{{ t }}</li>
+{% endfor %}
+</ul>
+</section>
+{% endif %}
+{% endmacro %}
+
+{% macro pictures(p, video, src) %}
+{% if p.pictures or p.moments_text %}
+<section class="moments-block">
+<h2>{% if video %}よかった場面{% else %}よかった所{% endif %}</h2>
+{% if p.pictures %}
+<div class="moments n{{ p.pictures|length }}">
+{% for it in p.pictures %}
+<figure class="moment">
+  <div class="frame"><img src="{{ src(it.image) }}" alt="{{ it.m.when }}、{{ it.caption }}"></div>
+  <figcaption>{% if it.m.number %}<span class="num">{{ it.m.number }}</span>{% endif %}<span><span class="when">{{ it.m.when }}</span><span class="what">{{ it.caption }}</span></span></figcaption>
+</figure>
+{% endfor %}
+</div>
+{% endif %}
+{% if p.moments_text %}
+<ul class="moment-list">
+{% for it in p.moments_text %}
+<li><span class="when">{{ it.m.when }}</span><span class="what">{% if it.m.page %}「{{ it.caption }}」{% else %}{{ it.caption }}{% endif %}</span></li>
+{% endfor %}
+</ul>
+{% endif %}
+</section>
+{% endif %}
+{% endmacro %}
+
+{% macro categories(p, words) %}
+{% if p.bars %}
+<div class="block chart">
+<h2>どんな場面で活躍したか</h2>
+{{ p.bars }}
+</div>
+{% elif p.single %}
+<div class="block">
+<h2>どんな場面で活躍したか</h2>
+<p class="stat">{{ p.single.glyph }} {{ p.single.label }}<small>{{ p.single.n }}回</small></p>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro court(p) %}
+{% if p.court %}
+<div class="block chart">
+<h2>コートのどこにいたか</h2>
+{% if p.distance %}<p class="stat">{{ p.distance }}</p>{% endif %}
+{{ p.court }}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro charts(p, words) %}
+{% if p.timeline %}
+<div class="block chart">
+<h2>時間の流れ</h2>
+{{ p.timeline }}
+<p class="note">{{ p.timeline_note }}{% if p.on_screen_min %}映っていた時間は約{{ p.on_screen_min }}分です。{% endif %}{% if p.pictures and p.pictures[0].m.number %}数字は写真の番号です。{% endif %}</p>
+</div>
+{% endif %}
+{% if (p.bars or p.single) and p.court %}
+<div class="pair">{{ categories(p, words) }}{{ court(p) }}</div>
+{% else %}{{ categories(p, words) }}{{ court(p) }}{% endif %}
+{% endmacro %}
+
+{# 成長のまとめ: one person across works (export.views.growth_page), its own page after the
+   handout; only what the records say #}
+{% macro growth(p, g, org, title, date, src, screen) %}
+<article class="growthpage">
+{% if not screen %}<i class="footline" data-footer="{{ g.footer }}"></i>{% endif %}
+{{ masthead(org, title, date, src) }}
+<h1 class="name serif">{{ g.title }}<span class="to">{{ p.name }}さん</span></h1>
+<ul class="growth-lines">
+{% for line in g.lines %}<li>{{ line }}</li>
+{% endfor %}
+</ul>
+{% if g.chart %}
+<div class="block chart">
+<h2>{{ g.chart_title }}</h2>
+{{ g.chart }}
+<p class="note">{{ g.chart_note }}</p>
+</div>
+{% endif %}
+<h2>作業ごとの記録</h2>
+<ul class="moment-list growth-works">
+{% for w in g.works %}
+<li><span class="when">{{ w.when }}・{{ w.activity }}</span><span class="what">「{{ w.title }}」{% if w.group %}（{{ w.group }}）{% endif %}{% if w.points %}　{{ w.points }}{% endif %}</span>{% if w.quote %}<span class="why serif">「{{ w.quote }}」</span>{% endif %}</li>
+{% endfor %}
+</ul>
+{% if screen %}<footer class="share">{{ g.footer }}</footer>{% endif %}
+</article>
+{% endmacro %}
