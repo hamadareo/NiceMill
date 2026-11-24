@@ -10,15 +10,16 @@ authors:
     given-names: "Masaki"
     affiliation: "Shonan Institute of Technology"
 abstract: >-
-  NiceMill drafts personalized positive-feedback texts from collaborative-interaction videos with a
-  local vision-language model; the evaluator checks the evidence scenes and approves each text.
+  NiceMill writes per-person positive-feedback texts from collaborative-interaction videos with a
+  local vision-language model. Each text is shown with the video scenes it is based on, and a
+  person checks it before it is finalized.
   (Japanese title of the paper: ローカルVLMを用いた協働インタラクション動画からのポジティブ・フィードバック生成)
 repository-code: "https://github.com/hamadareo/NiceMill"
+license: Apache-2.0
 keywords:
   - positive feedback
   - vision-language model
   - local inference
   - collaborative interaction
-# license: to be decided (see README.md)
 # preferred-citation / publication: to be decided
 #   (presented as Poster No. 37 at the 17th Dialogue System Symposium)

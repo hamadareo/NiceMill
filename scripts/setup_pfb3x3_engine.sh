@@ -74,7 +74,7 @@ APP="$(cd "$(dirname "$0")/.." && pwd -P)"
 DATA="${PFB_DATA_DIR:-$APP/data}"
 ENGINES="$APP/engines"
 ENG="$ENGINES/pfb3x3"
-YOLO_SRC="${PFB_YOLO_SRC:-$HOME/trackid3x3/repo/yolo11l.pt}"
+YOLO_SRC="${PFB_YOLO_SRC:-$HOME/tid_tracker/repo/yolo11l.pt}"
 TORCH_INDEX=https://download.pytorch.org/whl/cu128
 TORCH_PKGS=(torch==2.11.0 torchvision==0.26.0)          # as in ~/tid_tracker/venv (the server)
 # av: PyAV with av.codec.hwaccel (NVDEC through its bundled FFmpeg), the version the P2 tracking

@@ -1,13 +1,13 @@
-# NiceMill（ナイスミル）
+# NiceMill
 
 日本語 | [English](#english)
 
 **NiceMill** は、グループ活動や試合などの協働の動画から、ローカルのVLM（視覚言語モデル）で
-個人別のポジティブ・フィードバック（よかった点を伝える文章）の**下書き**を作り、
-評価する人が根拠の場面を見て確かめ、承認するソフトです。
+個人別のポジティブ・フィードバック（よかった点を伝える文章）を作り、
+評価する人が根拠の場面を見て確かめてから確定するソフトです。
 解析も文章づくりも手元の計算機の中だけで行い、映像を外部のサービスへ送りません。
 
-> **状態：公開準備中のスナップショットです。** ライセンスは未定です（下記）。
+> **ライセンス：Apache License 2.0**（下記）。研究・試作の段階のソフトです。
 > 動画・データ・モデルの重みは含みません。人物の追跡を行う「エンジン」（別のコード）も含まれないため、
 > **このリポジトリだけでは、動画から文章までの処理を最後まで動かせません**（「限界」の1を参照）。
 
@@ -20,16 +20,16 @@
 ## 使い方の流れ
 
 1. 動画を登録する（評価する人）
-2. AI（ローカルのVLM）が下書きを作る
-3. 評価する人が、根拠の場面を見て1人ずつ確認し、承認する
-4. 承認した文を、参加者に渡すPDFにする
+2. AI（ローカルのVLM）が文を作る
+3. 評価する人が、根拠の場面を見て1人ずつ確認し、確定する
+4. 確定した文を、参加者に配るPDFにする
 
-![承認の画面の例](docs/images/nicemill_approve.png)
+![確認の画面の例](docs/images/nicemill_approve.png)
 
-*名前（花子など）と文は架空の例です。根拠の画像は、公開クリップ（Samsunspor 対 Merkezefendi Belediyesi Denizli Basket、TBF、CC BY 3.0、切り出し）で、文の内容とは関係ありません。画面の「確認せずに自動で承認する」スイッチは、既定ではオフです。*
+*名前（花子など）と文は架空の例です。根拠の画像は、公開クリップ（Samsunspor 対 Merkezefendi Belediyesi Denizli Basket、TBF、CC BY 3.0、切り出し）で、文の内容とは関係ありません。確認を省いて自動で確定する設定は、既定ではオフです。*
 
-画面の流れは「動画の中身 → 動画 → 人を確かめる（任意） → 解析を待つ → 確認して承認 → PDFを受け取る」です。
-人が承認した文だけが、渡すPDFに入ります。
+画面の流れは「動画の中身 → 動画 → 人を確かめる（任意） → 解析を待つ → 確認して確定 → PDFを受け取る」です。
+人が確定した文だけが、配るPDFに入ります。
 
 ![振り返りプレーヤーの例（公開クリップ由来。出典は「出典」の節）](docs/images/review_player_public_clip.png)
 
@@ -40,7 +40,7 @@
 - **データが外に出ない**：ローカル実行です。クラウドのAPIは使いません。外部への通信の設定を持たず、
   推論サーバーは同じ計算機（localhost）の宛先だけを受け付けます（`src/pfb_app/ops/offline.py`）。
 - **根拠の場面を見られる**：文ごとに、元になった場面を確認できます。
-- **人が最終確認する**：AIの出力は下書きです。承認した文だけが、渡すPDFに入ります。
+- **人が最終確認する**：AIの文は、人が確認してから確定します。確定した文だけが、配るPDFに入ります。
 - **人物の取り違えに慎重**：人物は追跡で固定し、AIには「この番号の人が何をしたか」だけを聞きます。
   背番号は「3番？」のように疑問符つきで表示します。確信が足りない動作の断定は弱めて「要確認」を付けます。
 - 肯定的な内容だけを扱い、人の順位づけや比較はしません。
@@ -54,7 +54,7 @@
 
 | 段 | 役目 | 主なコード |
 |---|---|---|
-| 画面 | 登録、確認、承認、PDF | `src/pfb_app/ui/` |
+| 画面 | 登録、確認、確定、PDF | `src/pfb_app/ui/` |
 | ワーカー | ジョブの実行、GPUの空きの監視 | `src/pfb_app/worker/` |
 | 追跡・背番号・行動記録 | 別のエンジンをサブプロセスで呼ぶ | `src/pfb_app/engine/` |
 | 貢献・根拠・文章・検査 | VLM への問い合わせと検査 | `src/pfb_app/pipeline/` |
@@ -68,7 +68,7 @@
 どちらも研究・試作の段階で、教育や競技の現場に導入済みという意味ではありません。
 次の二つに分かれます。
 
-**研究室内の試用版（rel8）に含まれる機能**：動画の登録、人物の確認、解析、確認と承認の画面、PDF出力、
+**研究室内の試用版（rel8）に含まれる機能**：動画の登録、人物の確認、解析、確認と確定の画面、PDF出力、
 やさしい文章版、練習のヒント、運用（バックアップ・監視）、アカウント。
 
 **開発版にだけ含まれる機能（試用版にはまだ入っていません）**：振り返りプレーヤーとハイライト動画
@@ -166,7 +166,8 @@ PYTHONPATH=src PFB_CONFIG=/tmp/nicemill.yaml streamlit run src/pfb_app/ui/serve.
 
 ## 第三者のソフトウェアとライセンス
 
-- **このリポジトリのライセンスは、未定です。** ライセンスが付くまでは、すべての権利は著者にあります。
+- **このリポジトリのライセンスは、Apache License 2.0 です**（`LICENSE`、`NOTICE`）。著作権者は濱田怜央です。
+- `docs/images/` の画像は、元の動画のライセンス（CC BY 3.0）に従います。フォント（`src/pfb_app/ui/static/fonts/`）は SIL Open Font License 1.1 です。
 - 依存ライブラリ、モデルの重み、フォントのライセンスは `THIRD_PARTY_NOTICES.md` と `docs/THIRD_PARTY.md` にあります。
   特に、エンジンが使う Ultralytics（YOLO11）は AGPL-3.0 です。
 
@@ -193,10 +194,10 @@ PYTHONPATH=src PFB_CONFIG=/tmp/nicemill.yaml streamlit run src/pfb_app/ui/serve.
 
 **NiceMill** is software that drafts personalized positive-feedback texts from collaborative-interaction videos
 (group activities, games) with a local vision-language model (VLM). The person who evaluates then checks the scenes
-that each text is based on and approves it. Analysis and text generation run entirely on local machines; videos are
+that each text is based on and confirms it. Analysis and text generation run entirely on local machines; videos are
 not sent to external services.
 
-> **Status: a snapshot in preparation for release. The license is undecided.**
+> **License: Apache License 2.0.** This is research-stage software.
 > It contains no videos, data or model weights. The tracking "engine" (a separate code base) is not included either,
 > so **this repository alone cannot run the pipeline from a video to the texts** (see Limitations, item 1).
 
@@ -211,14 +212,14 @@ not sent to external services.
 
 1. The evaluator registers a video.
 2. The local VLM drafts the texts.
-3. The evaluator reviews the evidence scenes one person at a time and approves.
-4. Approved texts are put into a PDF to hand to the participants.
+3. The evaluator reviews the evidence scenes one person at a time and confirms each text.
+4. Confirmed texts are put into a PDF for the participants.
 
 ## Features
 
 - **Data stays local**: no cloud APIs; the inference server accepts localhost destinations only.
 - **Evidence scenes**: every text can be checked against the scene it came from.
-- **A human gives the final check**: only approved texts go into the PDF.
+- **A human gives the final check**: only confirmed texts go into the PDF.
 - **Careful about identity mix-ups**: people are fixed by tracking, and the VLM is only asked what person number N did.
   Jersey numbers are shown with a question mark such as "#3?". Action sentences that are not sufficiently supported are
   weakened and marked "needs checking".
@@ -238,7 +239,7 @@ Source: the lab's internal development version, which contains everything in the
 plus 24 commits that exist only in the development version. Both are at the research/prototype stage; this does not mean
 the software has been deployed in schools or sports settings.
 
-- **In the internal trial version (up to rel8)**: video registration, people check, analysis, review/approval screens, PDF output,
+- **In the internal trial version (up to rel8)**: video registration, people check, analysis, review/confirmation screens, PDF output,
   plain-language version, practice tips, operations (backup, monitoring), accounts.
 - **Development-version-only features**: the review player and highlight videos (per-person colours,
   speech bubbles, team grouping, texts for everyone, jersey-number labels, court registration and marking of people
@@ -289,7 +290,9 @@ people, and do not attach videos, images or personal names to bug reports.
 
 ## Third-party software and license
 
-**The license of this repository is undecided**; until one is added, all rights are reserved by the authors. See
+**This repository is licensed under the Apache License 2.0** (`LICENSE`, `NOTICE`; copyright holder: Reo Hamada).
+The images in `docs/images/` follow the licence of the source video (CC BY 3.0); the fonts are under the SIL Open
+Font License 1.1. See
 `THIRD_PARTY_NOTICES.md` and `docs/THIRD_PARTY.md` for dependencies, model weights and fonts (note: Ultralytics YOLO11,
 used by the engine, is AGPL-3.0).
 

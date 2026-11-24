@@ -1,0 +1,18 @@
+NiceMill
+Copyright 2026 濱田怜央 (Reo Hamada)
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party material in this repository keeps its own terms:
+
+- Fonts: the subset web fonts in src/pfb_app/ui/static/fonts/ (M PLUS 1, Dela Gothic One,
+  Barlow Condensed) are licensed under the SIL Open Font License, Version 1.1. Their copyright
+  notices and the licence text are in src/pfb_app/ui/static/fonts/OFL.txt.
+
+- Pictures: the images in docs/images/ are made from a public video clip and follow the
+  licence of that clip, CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/):
+  "Merkezefendi Belediyesi Denizli Basket - Samsunspor (24.01.20)", author TBF,
+  Wikimedia Commons. Changes: frames cut out, boxes and text drawn over them.
+
+Dependencies, model weights and the media used in examples are listed with their licences in
+THIRD_PARTY_NOTICES.md. None of them is redistributed in this repository.
