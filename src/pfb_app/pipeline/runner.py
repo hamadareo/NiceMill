@@ -333,16 +333,47 @@ def _finish_requested_deletions(ctx: StageContext) -> None:
         log.exception("削除を頼まれた作業の確認に失敗しました")
 
 
-def _auto_approve(ctx: StageContext, runs: list[StageRun]) -> None:
-    """「確認せずに自動で承認する」: the new feedback texts that need no person's look are
-    approved (services.review.auto_approve); a failure here never breaks the job."""
-    from pfb_app.services import review   # noqa: PLC0415 - services import this module
+def _claim_scan(ctx: StageContext, runs: list[StageRun]) -> None:
+    """「動作の再確認」: before the automatic approval looks at a new feedback text, the action words
+    of the scenes it cites are re-checked (pipeline.claim_scan) when the work's option is on. A
+    failure here never breaks the job: the text then simply waits for a person."""
+    from pfb_app.pipeline import claim_scan   # noqa: PLC0415 - heavy (video, tracks) imports
     for run in runs:
         try:
-            if review.auto_approve(ctx.repo, run):
+            if run.subject_id is None or run.status != "ok":
+                continue
+            submission = ctx.repo.get_submission(run.submission_id)
+            if not ctx.repo.get_assignment(submission["assignment_id"]).get("auto_approve"):
+                continue
+            r = claim_scan.scan_run(ctx.repo, ctx.settings, run)
+            log.info("動作を再確認しました subject=%s 場面=%d 動き=%d 質問=%d 見送り=%d",
+                     run.subject_id, r.scenes, r.motion, r.asked, len(r.skipped))
+        except Exception:   # noqa: BLE001 - the text stays for a person
+            log.exception("動作の再確認に失敗しました run=%s", run.id)
+
+
+def _auto_approve(ctx: StageContext, runs: list[StageRun]) -> None:
+    """「機械チェックを通った文を自動承認する」: the new feedback texts that pass every machine check
+    (services.autoapprove) are approved and recorded as 自動承認; a failure here never breaks the job."""
+    from pfb_app.services import autoapprove, review   # noqa: PLC0415 - services import this module
+    policy = autoapprove.Policy.from_settings(getattr(ctx, "settings", None))
+    for run in runs:
+        try:
+            if review.auto_approve(ctx.repo, run, policy):
                 log.info("自動で承認しました subject=%s run=%s", run.subject_id, run.id)
         except Exception:   # noqa: BLE001 - the text stays for a person to approve
             log.exception("自動の承認に失敗しました run=%s", run.id)
+
+
+def _record_versions(ctx: StageContext, runs: list[StageRun], job_id: int) -> None:
+    """「あとから訂正」 works: a new feedback text that replaces an earlier one is kept as a
+    version (services.corrections.after_pfb, with who asked for it); a failure here never
+    breaks the job."""
+    from pfb_app.services import corrections   # noqa: PLC0415 - services import this module
+    try:
+        corrections.after_pfb(ctx.repo, runs, job_id)
+    except Exception:   # noqa: BLE001 - the text is there; only its record is missing
+        log.exception("作り直しの記録に失敗しました job=%s", job_id)
 
 
 def _execute_job(job: Job, ctx: StageContext) -> None:
@@ -395,7 +426,9 @@ def _execute_job(job: Job, ctx: StageContext) -> None:
                     job.id)
         return
     if job.stage == Stage.pfb:
+        _claim_scan(ctx, runs)
         _auto_approve(ctx, runs)
+        _record_versions(ctx, runs, job.id)
     new_ids = enqueue_followups(ctx.repo, job)
     log.info("ジョブ完了 job=%s 次段階=%s", job.id, new_ids)
     if job.stage == Stage.pfb and Kind(_assignment(ctx.repo, job.submission_id)["kind"]) \

@@ -140,14 +140,17 @@ def _title_of(settings: Settings, path: Path) -> str:
 
 
 def start_work_from_videos(repo: Repo, settings: Settings, paths: list[Path],
-                           model_key: str) -> tuple[int, int]:
+                           model_key: str, review_mode: str | None = None) -> tuple[int, int]:
     """A new work from dropped videos (one per camera, at most 4): a video assignment named
     after the first file (school until the check is confirmed) and its first group, held for
     the content check. Returns (assignment_id, submission_id). Nothing is left behind when the
-    registration fails (VideoError, ValueError)."""
+    registration fails (VideoError, ValueError). `review_mode` None: a new work's mode
+    (services.corrections.NEW_WORK, 「あとから訂正」)."""
+    from pfb_app.services.corrections import NEW_WORK   # noqa: PLC0415
     paths = _camera_paths(paths)
     title = _title_of(settings, paths[0])
-    aid = repo.create_assignment(title, Kind.video, "", "", model_key, True, domain="school")
+    aid = repo.create_assignment(title, Kind.video, "", "", model_key, True, domain="school",
+                                 review_mode=review_mode or NEW_WORK)
     try:
         sid = _register_held(repo, settings, aid, paths)
     except BaseException:

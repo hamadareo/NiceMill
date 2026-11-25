@@ -1,4 +1,4 @@
-"""ナイスミル look and feel (direction 「A コートサイド」): colour tokens, self-hosted fonts,
+"""NiceMill look and feel (direction 「A コートサイド」): colour tokens, self-hosted fonts,
 the brand, stepper, step card, chips, approval stamp.
 
 A scoreboard: court navy carries the structure (sidebar, the stepper band, the step card's
@@ -61,7 +61,7 @@ FONT_FILES = tuple(f for _, _, f in FONT_FACES)
 FONT_URL = "app/static/fonts/"   # relative: resolves under the app's own origin and base path
 
 # --- the brand --------------------------------------------------------------------------------
-APP_NAME = "ナイスミル"
+APP_NAME = "NiceMill"
 TAGLINE = "ナイスプレーを、全員ぶん。"
 BRAND_DIR = Path(__file__).resolve().parents[1] / "static" / "brand"   # files, for st.logo
 BRAND_URL = "app/static/brand/"                                          # the same, served
@@ -139,8 +139,8 @@ _CSS = """
 }
 %(faces)s
 
-/* Less empty space above the page, so a step's button is more often in the first view. */
-.stApp [data-testid="stMainBlockContainer"] { padding-top: 2.5rem; }
+/* Clear of the fixed 60 px Streamlit header (2.5rem hid the top of 「ホームへ」), yet little empty space above the page. */
+.stApp [data-testid="stMainBlockContainer"] { padding-top: 4.25rem; }
 
 /* Buttons: ball orange for the one primary action, a navy outline for the rest. */
 .stApp button[data-testid^="stBaseButton-primary"],
@@ -519,6 +519,9 @@ ol.pfb-stagelist > li.pfb-stagelist__row { margin: 0; padding: 0.3rem 0; }
   border: 1px solid var(--pfb-line); border-radius: 10px; color: var(--pfb-ink);
   font-size: 1.3125rem; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* Streamlit draws captions at 60 percent opacity (about 3.9:1 on the paper background): the main
+   screen's captions use the muted ink at full strength (about 6.5:1); the sidebar keeps its own */
+[data-testid="stMain"] [data-testid="stCaptionContainer"] { opacity: 1; color: var(--pfb-muted); }
 .pfb-evidence {
   display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 1rem;
   margin: 0.5rem 0 0.25rem; padding: 0.5rem 0 0; border-top: 1px dashed var(--pfb-line);
@@ -709,7 +712,7 @@ ol.pfb-stagelist > li.pfb-stagelist__row { margin: 0; padding: 0.3rem 0; }
 # on navy, the display face on page titles, the home cards' state edge. Kept apart so the
 # component rules above stay as they were. (Plain text: it is inserted into _CSS as it is.)
 _COURTSIDE_CSS = """
-/* ===== ナイスミル: コートサイド ===== */
+/* ===== NiceMill: コートサイド ===== */
 /* Headings in our own HTML take the text face; only the page titles below take the display
    face (Streamlit gives every h1-h6 the theme's headingFont). */
 .stApp [class*="pfb-"]:is(h1, h2, h3, h4, h5, h6) { font-family: var(--pfb-font-ui); }

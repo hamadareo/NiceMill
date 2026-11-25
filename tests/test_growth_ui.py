@@ -197,14 +197,14 @@ def test_pdf_data_passes_the_choice(env):
 
 def test_only_people_with_an_approved_text_of_other_works_can_be_linked(env):
     """Review HIGH1/HIGH2: the choices hold approved people of other works only, and the
-    screen says so."""
+    screen says so (in words that also cover 「あとから訂正」 works, 2026-11-23)."""
     _, repo = env
     aid, _, a = add_work(repo, "定例会1", {"山田": ["発言"]}, day="2026-09-01")
     _, _, same = add_work(repo, "", {"鈴木": ["発言"]}, label="B", aid=aid)
     _, _, b = add_work(repo, "定例会2", {"佐藤": ["発言"], "田中": ["傾聴"]}, day="2026-09-08",
                        approve={"佐藤"})
     at = page({"subject": a["山田"]})
-    assert growth.APPROVED_ONLY in everything(at)
+    assert growth.EITHER_ONLY in everything(at)
     assert at.selectbox(key="pfb_growth_link_pick").options == [
         "佐藤（定例会2・2026年9月8日）"]
     assert same["鈴木"] and b["田中"]

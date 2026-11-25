@@ -46,7 +46,7 @@ def test_a_stopped_track_opens_with_the_retry_as_the_only_primary(env):
     at = ok(app(session={"assignment_id": aid}))
     assert shown_step(at) == 3
     page = html(at)
-    assert STOPPED in page and "映っている人が誰か選んでください" not in page
+    assert STOPPED in page and "映っている人の名前を選んでください" not in page
     assert any("ほかの解析と重なって止まりました" in e.value for e in at.error)
     assert primaries(at) == [RETRY]
     assert "これで決定して次へ" not in [b.label for b in at.button]

@@ -12,6 +12,15 @@ without the derivation). A work never handed out is never deleted.
 The worker calls `sweep` (at most every SWEEP_SEC, at most MAX_PER_PASS works). A work with a
 queued, running or GPU-waiting step, or one being deleted, is never touched; see
 `clear_media` for the order of things and the path checks.
+
+A 「あとから訂正」 work (correct_later) has no approvals, and its texts went out without a
+person's check: their videos are what a later correction looks at. So, never earlier and never
+more than for an approve work:
+- days only: its videos are never cleared automatically (the rule stands on approved texts and
+  there is no safe stand-in; the card says so);
+- 「すべて消す」: as for an approve work, but a correction (訂正・報告・報告を閉じた) is activity
+  too, like an approval taken back, and a work with an open report (誤りの報告あり・確認中) is
+  never deleted automatically.
 """
 from __future__ import annotations
 
@@ -93,7 +102,11 @@ _LAST_ACTIVITY = (
     "  (SELECT 'subject:' || s.id FROM subjects s JOIN submissions b ON s.submission_id = b.id"
     "   WHERE b.assignment_id = a.id)), ''),"
     " COALESCE((SELECT MAX(c.labeled_at) FROM linecall_labels c JOIN submissions b"
-    "  ON c.submission_id = b.id WHERE b.assignment_id = a.id), ''))")
+    "  ON c.submission_id = b.id WHERE b.assignment_id = a.id), ''),"
+    # 「あとから訂正」: a correction, a report or its closing (services.corrections)
+    " COALESCE((SELECT MAX(v.created_at) FROM text_versions v JOIN subjects s"
+    "  ON v.subject_id = s.id JOIN submissions b ON s.submission_id = b.id"
+    "  WHERE b.assignment_id = a.id), ''))")
 _FINISHED = f"SELECT a.id, a.pdf_downloaded_at, {_LAST_ACTIVITY} FROM assignments a"
 
 
@@ -145,7 +158,12 @@ def card_line(repo: Repo, work: dict, policy: Policy, now: datetime | None = Non
                    and _outside_videos(repo, settings, work["id"]) else ""))
     if not policy.on:
         return None
-    if not policy.all and work.get("pdf_downloaded_at") and not _has_approved(repo, work["id"]):
+    if _live(work):
+        if not policy.all:   # never cleared automatically: its texts were not checked first
+            return f"あとから訂正の作業のため、{word}は自動では消しません"
+        if _open_report(repo, work["id"]):
+            return "誤りの報告を確認中のため、この作業は自動では消しません"
+    elif not policy.all and work.get("pdf_downloaded_at") and not _has_approved(repo, work["id"]):
         # handed out once, nobody approved now: nothing would be kept, so the videos stay
         return f"承認した文章がないため、{word}は自動では消しません"
     if work["id"] in _failed_since(repo, now - FAIL_PAUSE):
@@ -173,6 +191,18 @@ def _active_works(repo: Repo) -> set[int]:
         _ACTIVE)}
 
 
+def _live(work: dict) -> bool:
+    return work.get("review_mode") == "correct_later"
+
+
+def _open_report(repo: Repo, aid: int) -> bool:
+    """Someone's newest correction row in the work is a report (誤りの報告あり・確認中)."""
+    return repo.conn.execute(
+        "SELECT 1 FROM subjects s JOIN submissions b ON s.submission_id = b.id WHERE"
+        " b.assignment_id=? AND (SELECT v.kind FROM text_versions v WHERE v.subject_id = s.id"
+        " ORDER BY v.id DESC LIMIT 1) = 'report' LIMIT 1", (aid,)).fetchone() is not None
+
+
 def _has_approved(repo: Repo, aid: int) -> bool:
     return repo.conn.execute(
         "SELECT 1 FROM subjects s JOIN submissions b ON s.submission_id = b.id WHERE"
@@ -185,6 +215,8 @@ def _due_all(repo: Repo, policy: Policy, now: datetime) -> list[int]:
     if not policy.on:
         return []
     out = []
+    live = {r[0] for r in repo.conn.execute(
+        "SELECT id FROM assignments WHERE review_mode = 'correct_later'")}
     for aid, received, last, removed in repo.conn.execute(
             _FINISHED.replace("FROM assignments a", ", a.media_removed_at FROM assignments a")
             + " WHERE a.pdf_downloaded_at IS NOT NULL ORDER BY a.id"):
@@ -193,7 +225,10 @@ def _due_all(repo: Repo, policy: Policy, now: datetime) -> list[int]:
             continue
         if removed and not policy.all:
             continue
-        if not policy.all and not _has_approved(repo, aid):
+        if aid in live:
+            if not policy.all or _open_report(repo, aid):
+                continue   # 「あとから訂正」: videos stay; an open report holds the deletion
+        elif not policy.all and not _has_approved(repo, aid):
             continue   # nothing to hand out any more: its videos stay (never a stuck pass)
         out.append(aid)
     pending = _pending_deletions(repo)

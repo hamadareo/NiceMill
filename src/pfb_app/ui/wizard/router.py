@@ -366,11 +366,15 @@ def _screens():
 
 def _screen_of(screen: Screen):
     """The screen function of the step shown. Step 1 of a video work with a group still held
-    for its content check is that group's check card; otherwise the step's own screen."""
+    for its content check is that group's check card; step 5 of a 「あとから訂正」 work is
+    「文を読む・直す」 (step_correct); otherwise the step's own screen."""
     if screen.key == "assignment" and screen.progress.kind == "video" \
             and held_submissions(screen.snap, screen.progress.assignment_id):
         from pfb_app.ui.wizard import step_check   # noqa: PLC0415
         return step_check.render
+    if screen.key == "review" and screen.progress.live:
+        from pfb_app.ui.wizard import step_correct   # noqa: PLC0415
+        return step_correct.render
     return _screens()[screen.key]
 
 
@@ -432,10 +436,11 @@ def render() -> None:
         st.session_state.pop(REVIEW_BULK_DONE, None)
     show = _screen_of(screen)
     show(screen)
-    _help_footer("check" if show.__module__.endswith("step_check") else screen.key)
+    _help_footer("check" if show.__module__.endswith("step_check") else screen.key,
+                 progress.live)
 
 
-def _help_footer(key: str) -> None:
+def _help_footer(key: str, live: bool = False) -> None:
     """The step's one-line tip and the link to 「はじめての方へ」 (ui/wizard/help)."""
     from pfb_app.ui.wizard import help as guide          # noqa: PLC0415
-    guide.step_footer(key)
+    guide.step_footer(key, live)

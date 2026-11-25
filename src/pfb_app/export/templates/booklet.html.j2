@@ -1,0 +1,301 @@
+{% extends "_base.html.j2" %}
+{% import "_blocks.html.j2" as b %}
+{# One page of the booklet (export.booklet): `kind` cover / left / right / front_l / front_r / back; `n` is the page number
+   (odd = right page: the gutter is on its left; even = left page: the gutter is on its right) #}
+{% block style %}
+{% set st = [[s, tightmin | default(1)] | max, 1.3] | min %}
+@page {
+  size: A4;
+{% if n % 2 == 0 %}
+  margin: 14mm 22mm 20mm 15mm;
+  @bottom-left { content: url("{{ src(brand_mark) }}") "\2002{{ brand_name }}\3000 {{ n }}"; width: 80mm; font-family: "Noto Sans CJK JP"; font-weight: bold; font-size: 10pt; color: {{ brand_colour }}; vertical-align: middle; text-align: left; }
+  @bottom-center { content: none; }
+  @bottom-right { content: none; }
+{% else %}
+  margin: 14mm 15mm 20mm 22mm;
+  @bottom-right { content: {% if kind == "cover" %}none{% else %}"{{ n }}\3000{{ brand_name }}\2002" url("{{ src(brand_mark) }}"){% endif %}; width: 80mm; font-family: "Noto Sans CJK JP"; font-weight: bold; font-size: 10pt; color: {{ brand_colour }}; vertical-align: middle; text-align: right; }
+  @bottom-center { content: none; }
+  @bottom-left { content: none; }
+{% endif %}
+}
+html { font-size: {{ 11 * st }}pt; line-height: 1.6; }
+.bk h1 { font-size: 1.9em; margin: 0 0 3mm; line-height: 1.25; }
+.bk h2 { font-size: 1.15em; margin: {{ 5 * s }}mm 0 {{ 2 * s }}mm; color: {{ accent }}; }
+.bk .who { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: {{ 5 * s }}mm; border-bottom: 0.6pt solid #dfe3e8; padding-bottom: {{ 3 * s }}mm; }
+.bk .who .photo, .bk .who .monogram { width: {{ 26 * s }}mm; height: {{ 26 * s }}mm; margin-right: 6mm; border-radius: 4mm; font-size: 24pt; line-height: {{ 26 * s }}mm; }
+.bk .who h1 { margin: 0; white-space: nowrap; }
+.bk .who > div:first-of-type { flex: 0 0 auto; }
+.bk .who .id { color: #59606b; font-size: 0.9em; }
+.bk .who .work { flex: 1 0 100%; margin: 2mm 0 0; text-align: left; color: #59606b; font-size: 0.8em; }
+.bk .letter { font-size: {{ 14 * st }}pt; line-height: 1.95; max-width: none; margin: 0 0 {{ 6 * s }}mm; }
+.bk .shots { display: grid; grid-template-columns: repeat({{ cols }}, 1fr); column-gap: 3mm; }
+.bk .shot { width: {{ ((173 / cols) - 4) * ([s, 1] | min) }}mm; margin: 0 0 {{ 4 * s }}mm 0; page-break-inside: avoid; }
+.bk .shot .frame { background: #f2f4f7; border-radius: 3mm; overflow: hidden; }
+.bk .shot .frame img { display: block; width: 100%; height: auto; }
+.bk .shot .cap { margin-top: 1.5mm; font-size: 0.85em; line-height: 1.45; }
+.bk .shot .cap b { color: #59606b; display: block; font-size: 0.9em; }
+.bk .chart svg { width: 100%; max-width: {{ 150 * s }}mm; height: auto; max-height: none; }
+.bk table.ev { width: 100%; border-collapse: collapse; font-size: 0.85em; margin: 0 0 {{ 3 * s }}mm; }
+.bk table.ev th { text-align: left; color: #59606b; font-weight: normal; border-bottom: 0.6pt solid #b9c0ca; padding: 0.8mm 2mm 0.8mm 0; }
+.bk table.ev td { vertical-align: top; border-bottom: 0.4pt solid #e6e9ee; padding: 1.2mm 2mm 1.2mm 0; line-height: 1.45; }
+.bk ul.facts { list-style: none; margin: 0 0 {{ 3 * s }}mm; padding: 0; font-size: 0.95em; }
+.bk ul.facts li { padding: 0.6mm 0; }
+.bk .cover .frame img { width: 100%; height: auto; display: block; border-radius: 3mm; }
+.bk .pair { display: block; }
+.bk .pair > .block + .block { margin-left: 0; }
+.bk .tipsbox li { font-size: 1.05em; }
+.bk .small { font-size: 0.78em; color: #59606b; line-height: 1.5; }
+.bk .status { font-size: 1em; font-weight: bold; margin: {{ 4 * s }}mm 0 1mm; }
+.bk .cover { text-align: left; display: flex; flex-direction: column; min-height: {{ 255 }}mm; }
+.bk .cover .series { font-size: {{ 11 * s }}pt; letter-spacing: 0.12em; color: #59606b; margin: {{ 6 * s }}mm 0 {{ 22 * s }}mm; }
+.bk .cover .title { font-family: "Noto Sans CJK JP"; font-weight: 900; font-size: {{ 46 * s }}pt; line-height: 1.15; color: {{ brand_colour }}; margin: 0 0 {{ 8 * s }}mm; }
+.bk .cover .subtitle { font-size: {{ 15 * s }}pt; line-height: 1.5; margin: 0 0 {{ 10 * s }}mm; }
+.bk .cover hr { border: 0; border-top: 0.8pt solid {{ brand_colour }}; margin: 0 0 {{ 8 * s }}mm; width: 100%; }
+.bk .cover .authors { font-size: {{ 14 * s }}pt; line-height: 1.8; margin: 0 0 {{ 6 * s }}mm; font-weight: bold; }
+.bk .cover .issue { font-size: {{ 11 * s }}pt; color: #59606b; margin: 0; }
+.bk .cover .bottom { margin-top: auto; display: flex; align-items: flex-end; }
+.bk .cover .qr { width: {{ 36 * s }}mm; height: {{ 36 * s }}mm; display: block; }
+.bk .cover .qrtext { margin-left: 6mm; font-size: {{ 10 * s }}pt; line-height: 1.6; }
+.bk .cover .qrtext .note { color: #59606b; font-size: 0.9em; }
+.bk .cover .src { margin-top: {{ 8 * s }}mm; font-size: {{ 9 * s }}pt; color: #59606b; }
+.bk ol.toc { list-style: none; padding: 0; margin: 0; }
+.bk ol.toc li { display: flex; justify-content: space-between; border-bottom: 0.4pt dotted #b9c0ca; padding: 1.4mm 0; font-size: 1em; }
+.bk .strip { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 3mm; margin: 0 0 {{ 3 * s }}mm; }
+.bk .strip .shot .cap { text-align: center; font-size: 0.8em; }
+.bk .strip .shot .cap b { display: inline; color: #1f2933; }
+.bk table.figs { width: 100%; border-collapse: collapse; margin: 0 0 {{ 4 * s }}mm; font-size: 0.95em; }
+.bk table.figs th { text-align: left; color: #59606b; font-weight: normal; border-bottom: 0.6pt solid #b9c0ca; padding: 0.8mm 2mm 0.8mm 0; font-size: 0.85em; }
+.bk table.figs td { border-bottom: 0.4pt solid #e6e9ee; padding: {{ 1.6 * s }}mm 2mm {{ 1.6 * s }}mm 0; vertical-align: baseline; line-height: 1.4; }
+.bk table.figs td.v { font-weight: bold; font-size: 1.25em; white-space: nowrap; }
+.bk .bars { margin: 0 0 {{ 5 * s }}mm; }
+.bk .bars .row { display: flex; align-items: center; margin: 1mm 0; font-size: 0.9em; }
+.bk .bars .lab { width: 18mm; color: #59606b; }
+.bk .bars .track { flex: 1 1 0; min-width: 0; background: #eef0f3; height: {{ 6 * s }}mm; margin-right: 3mm; }
+.bk .bars .fill { height: 100%; }
+.bk .bars .val { flex: 0 0 62mm; white-space: normal; line-height: 1.35; font-size: 0.9em; }
+.bk .est { display: inline-block; border: 0.6pt solid {{ brand_colour }}; color: {{ brand_colour }}; font-size: 0.75em; padding: 0 2mm; border-radius: 2mm; margin-top: 1mm; }
+.bk .dm-lead { font-size: {{ 17 * st }}pt; font-weight: bold; color: {{ brand_colour }}; line-height: 1.45; margin: 0 0 {{ 4 * s }}mm; }
+.bk .dm-step { display: flex; align-items: center; margin: 0 0 {{ 3 * s }}mm; padding-bottom: {{ 3 * s }}mm; border-bottom: 0.4pt solid #e6e9ee; }
+.bk .dm-step .dm-n { flex: 0 0 9mm; font-size: {{ 20 * st }}pt; font-weight: 900; color: {{ brand_colour }}; font-family: "Noto Sans CJK JP"; }
+.bk .dm-step .dm-img { flex: 0 0 {{ 62 * ([s, 1] | min) }}mm; margin-right: 5mm; }
+.bk .dm-step .dm-img img { display: block; width: 100%; height: auto; max-height: {{ 40 * ([s, 1] | min) }}mm; object-fit: cover; border-radius: 2mm; }
+.bk .dm-step .dm-t { flex: 1 1 0; min-width: 0; }
+.bk .dm-step .dm-t b { display: block; font-size: 1.1em; }
+.bk .dm-step .dm-t span { font-size: 0.92em; color: #3b424c; }
+.bk .dm-t .dm-quote { display: block; padding-right: 4mm; font-size: 0.95em; line-height: 1.7; border-left: 1.2mm solid {{ brand_colour }}; padding-left: 3mm; }
+.bk .dm-thumbs { display: grid; grid-template-columns: 1fr 1fr; column-gap: 5mm; row-gap: 4mm; margin: 0 auto {{ 4 * s }}mm; width: {{ 100 * ([s, 1] | min) }}%; }
+.bk .dm-thumbs img { width: 100%; height: auto; display: block; border: 0.5pt solid #cfd5dd; }
+.bk .dm-big { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8mm; }
+.bk .dm-big > div { border-top: 0.8pt solid {{ brand_colour }}; padding: {{ 2 * s }}mm 0 {{ 4 * s }}mm; }
+.bk .dm-big .v { font-family: "Noto Sans CJK JP"; font-weight: 900; font-size: {{ 40 * st }}pt; line-height: 1.1; color: {{ brand_colour }}; }
+.bk .dm-big .v small { font-size: 0.4em; font-weight: bold; color: #1f2933; margin-left: 1mm; }
+.bk .dm-big .k { font-weight: bold; font-size: 1.05em; margin-top: 1mm; }
+.bk .dm-big .d { font-size: 0.82em; color: #59606b; line-height: 1.45; }
+.bk .dm-pos { position: relative; height: 4mm; background: #eef0f3; margin: 1mm 0 1mm; }
+.bk .dm-pos .run { position: absolute; top: 0; bottom: 0; background: #f3c9b6; }
+.bk .dm-pos .win { position: absolute; top: 0; bottom: 0; background: {{ brand_colour }}; min-width: 0.6mm; }
+.bk ul.dm-list { margin: 0 0 {{ 3 * s }}mm; padding-left: 5mm; }
+.bk ul.dm-list li { margin: 0 0 {{ 2.4 * s }}mm; line-height: 1.55; }
+.bk ul.dm-list li b { color: #1f2933; }
+.bk p { margin: 0 0 {{ 3 * s }}mm; }
+{% endblock %}
+{% block body %}
+<div class="bk">
+{% if kind == "cover" %}
+<div class="cover">
+<div class="series">{{ cover.series }}</div>
+<div class="title">NiceMill<br>処理出力</div>
+{% set sp = (cover.subtitle or cover.work).rsplit(" ", 1) %}<div class="subtitle">{{ sp[0] }}{% if sp|length > 1 %} <span style="white-space:nowrap">{{ sp[1] }}</span>{% endif %}</div>
+<hr>
+<div class="authors">{% for a in cover.authors %}{{ a }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+<p class="issue">{{ cover.date }}発行　{{ cover.edition }}</p>
+<div class="bottom">
+{% if cover.qr %}<img class="qr" src="{{ src(cover.qr) }}" alt="GitHub">
+<div class="qrtext"><b>GitHub</b><br>{{ cover.repo_url }}{% if cover.repo_note %}<br><span class="note">{{ cover.repo_note }}</span>{% endif %}</div>{% endif %}
+</div>
+{% if cover.credit_short %}<div class="src">{{ cover.credit_short }}</div>{% endif %}
+</div>
+{% elif kind == "strip" %}
+<h1 class="serif">検出の例　{{ idx }}／{{ total }}</h1>
+<div class="who"><div><h1 class="serif" style="font-size:1.4em">{{ ex.who }}</h1>{% if ex.jersey_id %}<div class="id">{{ ex.jersey_id }}</div>{% endif %}</div>
+<div class="work">{{ ex.clock }} {{ ex.images[0][0] }} から {{ ex.images[-1][0] }} まで（{{ ex.seconds }}秒・{{ ex.frames }}フレーム）</div></div>
+<div class="strip">
+{% for lab, img in ex.images %}
+<figure class="shot" style="margin:0 0 {{ 3 * s }}mm 0; width: {{ ((173 / 3) - 3) * ([s, 1] | min) }}mm"><div class="frame" style="height: {{ ((173 / 3) - 3) * ([s, 1] | min) * 4 / 3 }}mm">{% if img %}<img src="{{ src(img) }}" alt="" style="height:100%; width:100%; object-fit:cover">{% endif %}</div>
+<div class="cap"><b>{{ lab }}</b></div></figure>
+{% endfor %}
+</div>
+{% if ex.run_a and ex.clip_frames %}<div class="small">この区間（濃い色）が、クリップ全体{{ (ex.clip_frames / ex.fps) | round | int }}秒のどこにあたるか。薄い色は、この枠が途切れず続いた区間全体（{{ ex.run_s }}秒）。</div>
+<div class="dm-pos"><span class="run" style="left:{{ 100 * ex.run_a / ex.clip_frames }}%; width:{{ 100 * (ex.run_b - ex.run_a) / ex.clip_frames }}%"></span><span class="win" style="left:{{ 100 * ex.a / ex.clip_frames }}%; width:{{ 100 * (ex.b - ex.a) / ex.clip_frames }}%"></span></div>{% endif %}
+<p>枠が人を追い続けた{{ ex.seconds }}秒（{{ ex.frames }}フレーム）。このあいだ、{{ ex.jersey_id or ex.who }}の枠は全フレームにあり、途切れず、前のフレームから体の高さの半分を超えて飛ぶこともなく、ほかの人物の枠と半分以上重なることもありませんでした。写真は{{ per }}枚で、{{ step }}秒おきです。{% if ex.scene %}この区間に、同一人物と確認できた場面を含みます。{% endif %}</p>
+<p class="small">時刻は{{ ex.clock }}の時間です。</p>
+{% elif kind == "strip_note" %}
+<h1 class="serif">検出の例の見方</h1>
+<p>「検出の例」は、一人の人物IDの枠を、連続した121フレーム（30fpsで約4秒）にわたって追った写真です。選んだ区間は、枠が全フレームにあり、飛ばず、ほかの人物の枠と半分以上重なることのない所です。</p>
+<table class="ev"><tr><th>例</th><th>人物</th><th>区間</th><th>長さ</th><th>途切れない区間の全体</th></tr>
+{% for e in examples %}<tr><td>{{ loop.index }}</td><td>{{ e.who }}　{{ e.jersey_id }}</td><td style="white-space:nowrap">{{ e.images[0][0] }}〜{{ e.images[-1][0] }}</td><td>{{ e.seconds }}秒・{{ e.frames }}フレーム</td><td>{{ e.run_s }}秒</td></tr>
+{% endfor %}</table>
+<p class="small">この連続性は、枠の位置の記録から測ったものです。</p>
+{% elif kind == "numbers_l" %}
+{% set c = numbers.clip %}
+<h1 class="serif">検出の数字</h1>
+<p>この公開クリップ（Samsunspor、約{{ (c.clip_s or 0) // 60 }}分、この1本）で測った値です。</p>
+<div class="dm-big">
+{% if c.clip_s %}<div><div class="v">{{ c.clip_s }}<small>秒</small></div><div class="k">1本の動画から</div><div class="d">{{ c.frames }}フレーム、{{ c.fps | round | int }}フレーム／秒</div></div>{% endif %}
+<div><div class="v">{{ c.ids }}<small>人物ID</small></div><div class="k">を追跡した</div><div class="d">追跡した人物IDの数</div></div>
+{% if c.boxes_per_frame %}<div><div class="v">{{ c.boxes_per_frame }}<small>人／コマ</small></div><div class="k">1コマに平均</div><div class="d">1コマあたりの枠の数の平均（全フレーム）</div></div>{% endif %}
+<div><div class="v">{{ c.longest_run_s }}<small>秒</small></div><div class="k">途切れず追い続けた最長</div><div class="d">一つの人物IDの枠が、連続したフレームで飛ばずに続いた長さ</div></div>
+<div><div class="v">{{ c.runs_4s }}<small>区間</small></div><div class="k">4秒以上の連続追跡</div><div class="d">途切れず飛ばない4秒以上の区間の合計（全人物ID）</div></div>
+<div><div class="v">{{ c.ids_with_number }}<small>／{{ c.ids }}人物ID</small></div><div class="k">で背番号を読み取れた</div><div class="d">最も多く読み取られた背番号がある人物ID</div></div>
+<div><div class="v">{{ numbers.n_people }}<small>人分</small></div><div class="k">の個別フィードバック文</div><div class="d">よかった場面があり、文が出た人</div></div>
+<div><div class="v">{{ c.scenes_ok }}<small>場面</small></div><div class="k">を同一人物と確認できた</div><div class="d">記録された{{ c.scenes_all }}場面のうち、本冊子の基準で確認できたもの</div></div>
+</div>
+{% elif kind == "numbers_r" %}
+{% set h = numbers.hero %}
+<h1 class="serif">追跡の様子</h1>
+{% if h %}
+<p>{{ h.jersey_id or h.who }}の枠が、{{ h.seconds }}秒（{{ h.frames }}フレーム）のあいだ、一度も途切れず飛ばずに続いた区間を、全体から8枚取り出しました。{{ h.clock }} {{ h.images[0][0] }} から {{ h.images[-1][0] }} まで。</p>
+<div class="strip" style="grid-template-columns: repeat(4, 1fr)">
+{% for lab, img in h.images %}
+<figure class="shot" style="margin:0 0 {{ 3 * s }}mm 0; width: {{ ((173 / 4) - 3) * ([s, 1] | min) }}mm"><div class="frame" style="height: {{ ((173 / 4) - 3) * ([s, 1] | min) * 4 / 3 }}mm">{% if img %}<img src="{{ src(img) }}" alt="" style="height:100%; width:100%; object-fit:cover">{% endif %}</div>
+<div class="cap"><b>{{ lab }}</b></div></figure>
+{% endfor %}
+</div>
+<p class="small">枠が途切れず続いた区間の例です。</p>
+{% else %}
+<p>この動画では、同一人物と確認できた場面のある人物がいなかったため、追跡の様子の写真は載せていません。枠の数や連続して追えた長さは、前のページの数字にあります。</p>
+{% endif %}
+{% if numbers.people %}
+<h2>掲載した人物ごとの値</h2>
+<table class="ev"><tr><th>人物</th><th>確認できた場面</th><th>枠が途切れず飛ばない最長の区間</th><th>4秒以上の区間</th></tr>
+{% for r in numbers.people %}<tr><td style="white-space:nowrap">{{ r.who }}<br><span class="small">{{ r.id }}</span></td><td>{{ r.ok }}／{{ r.all }}件</td><td>{{ r.longest if r.longest is not none else "—" }}{% if r.longest is not none %}秒{% endif %}</td><td>{{ r.runs4 }}か所</td></tr>
+{% endfor %}</table>
+{% endif %}
+{% elif kind == "can_l" %}
+{% set c = numbers.clip %}
+<h1 class="serif">できること（今）</h1>
+<ul class="dm-list">
+<li><b>動画1本から、選手ごとの1枚を作る。</b>人物ごとの文章、場面の写真、グラフを1枚にまとめます。この動画では{{ numbers.n_people }}人分が出ました。</li>
+<li><b>人を見つけて、同じ人を追い続ける。</b>{{ c.ids }}人物IDを追跡し、最長{{ c.longest_run_s }}秒、枠が途切れず飛ばずに続いた。</li>
+<li><b>背番号を読み取る。</b>{{ c.ids_with_number }}／{{ c.ids }}人物IDで読み取れ、同じ人かどうかの手がかりにする。</li>
+<li><b>場面ごとに、同一人物かを確認する。</b>確認できた場面で写真と件数を出せます。この動画では記録された{{ c.scenes_all }}場面のうち{{ c.scenes_ok }}場面。</li>
+<li><b>ほめる文章を、人ごとに自動で書く。</b>場面をもとに、よかった点を人ごとの文にする。</li>
+<li><b>あとから文章を直せる。</b>直した内容は版として履歴に残り、確認状況が出ます。</li>
+<li><b>冊子にできる。</b>表紙、見開き、A3の面付けまで、PDFで出る。</li>
+</ul>
+<h2>この冊子で示したこと</h2>
+<ul class="dm-list">
+<li><b>人物ページ：{{ numbers.people | length }}人。</b>確認できた場面の写真と、ほめる文章を載せました。</li>
+{% if numbers.examples %}<li><b>検出の例：{{ numbers.examples }}例。</b>各4秒（121フレーム）、枠が人を追い続けた様子を写真で示しました。</li>{% endif %}
+{% if numbers.hero %}<li><b>追跡の様子：{{ numbers.hero.seconds }}秒。</b>一つの枠が途切れず続いた区間を、全体から取り出して示しました。</li>{% endif %}
+</ul>
+<p class="small">この冊子は、上のうち確認できた部分を載せたデモ版です。</p>
+{% elif kind == "can_r" %}
+<h1 class="serif">これから（開発中）</h1>
+<ul class="dm-list">
+<li><b>枠の見落としを減らす。</b>開発ブランチでは、人物として追跡できなかった人にも名前のない枠を付け、見落としを減らしています。</li>
+</ul>
+{% for r in numbers.recall %}
+<h2>{{ r.clip }}</h2>
+<div class="bars">
+<div class="row"><span class="lab">改善前</span><span class="track"><span class="fill" style="display:block; width:{{ r.before }}%; background:#9aa3ae"></span></span><span class="val"><b>{{ r.before }}%</b>（{{ r.n_before }}／{{ r.total }}人、選手以外の枠 {{ r.fp_before }}）</span></div>
+<div class="row"><span class="lab">改善後</span><span class="track"><span class="fill" style="display:block; width:{{ r.after }}%; background:{{ brand_colour }}"></span></span><span class="val"><b>{{ r.after }}%</b>（{{ r.n_after }}／{{ r.total }}人、選手以外の枠 {{ r.fp_after }}）</span></div>
+</div>
+{% endfor %}
+<p class="small">{{ numbers.recall_note }}</p>
+<p class="small">{{ numbers.fp_note }}</p>
+<ul class="dm-list">
+<li><b>確認できる場面を、さらに増やす。</b>今は記録された{{ numbers.clip.scenes_all }}場面のうち{{ numbers.clip.scenes_ok }}場面です。背番号の読み取り間隔を詰める、ほかの手がかりを足す、といった改良を進めます。</li>
+<li><b>同じ選手を、一つの人物IDにまとめる精度を高める。</b></li>
+</ul>
+{% elif kind == "intro_l" %}
+{% set i = intro %}
+<h1 class="serif">NiceMillとは</h1>
+<p class="dm-lead">動画を入れるだけで、選手ごとの個別フィードバックが自動で出る。</p>
+{% macro step(n, img, head, body) %}<div class="dm-step"><div class="dm-n">{{ n }}</div>{% if img %}<div class="dm-img"><img src="{{ src(img) }}" alt=""></div>{% endif %}<div class="dm-t"><b>{{ head }}</b><span>{{ body }}</span></div></div>{% endmacro %}
+{{ step(1, i.raw, "動画を1本入れる", "試合の動画を入れるだけ。この冊子の例は、公開クリップ（約" ~ ((i.clip_s or 0) // 60) ~ "分）。") }}
+{{ step(2, i.boxed, "人を見つけて、追い続ける", "画面の人物を見つけ、同じ人に同じ枠を付けて追う（オレンジの枠が、ある一人）。") }}
+{{ step(3, i.jersey, "背番号を読む", "追っている人の上半身から背番号を読み取り、同じ人かの手がかりにする。") }}
+{{ step(4, i.scene, "よかった場面を選ぶ", "パスやシュートなど、チームに役立った場面を拾い出す。") }}
+<div class="dm-step"><div class="dm-n">5</div><div class="dm-t"><b>ほめる文章を書く</b><span class="dm-quote">{{ i.quote }}</span></div></div>
+<div class="dm-step" style="border-bottom:0"><div class="dm-n">6</div><div class="dm-t"><b>選手1人に1枚</b><span>背番号の名前、文章、写真、グラフを1枚にまとめる（次のページ）。</span></div></div>
+{% elif kind == "intro_r" %}
+{% set i = intro %}
+<h1 class="serif">実際の出力</h1>
+<p class="dm-lead">この動画では、{{ i.people }}人分の個別フィードバックが出ました。</p>
+<p>下は、この冊子に載せた人物ページの実物です。人ごとに1枚の文章と写真で、確認できた場面を使っています。</p>
+{% if i.thumbs %}<div class="dm-thumbs">{% for th in i.thumbs %}<div><img src="{{ src(th) }}" alt=""></div>{% endfor %}</div>{% endif %}
+<p class="small">文章は AI が作成しました。人の呼び方は選手IDです。</p>
+{% elif kind == "front_l" %}
+<h1 class="serif">目次</h1>
+<ol class="toc">
+{% for it in toc %}<li><span>{{ it.name }}{% if it.id %}　<span class="small">{{ it.id }}</span>{% endif %}</span><span>p.{{ it.page }}–{{ it.page + 1 }}</span></li>
+{% endfor %}
+</ol>
+{% if not toc %}<p>この冊子には、載せられる文がありません。</p>{% endif %}
+{% elif kind in ("front_r", "back") %}
+{% if kind == "front_r" %}<h1 class="serif">この冊子について</h1>{% else %}<h1 class="serif">奥付</h1>{% endif %}
+{% if kind == "back" or true %}
+<p>{{ about.what }}</p>
+<p>{{ about.ai }}</p>
+<p>{{ about.fix }}</p>
+{% if about.left_out %}<p>{{ about.left_out }}</p>{% endif %}
+{% if kind == "back" and about.measured %}<p>{{ about.measured }}</p><p>{{ about.criteria }}</p>{% endif %}
+{% endif %}
+{% if kind == "back" %}
+<h2>出典とライセンス</h2>
+{% for l in credits %}<p class="small">{{ l }}</p>{% endfor %}
+<h2>この冊子の情報</h2>
+<p class="small">{{ brand_name }}　出力日時 {{ stamp }}　{{ cover.people }}人分</p>
+<p class="small">{{ cover.authors|join("　") }}</p>
+<p class="small">GitHub　{{ cover.repo_url }}</p>
+<p class="small">{{ contact }}</p>
+<p class="small">{{ ai_line }}</p>
+{% if about.tracking_note %}<p class="small" id="tracking-note">{{ about.tracking_note }}</p>{% endif %}
+{% if toc_back %}<h2>目次</h2><ol class="toc">{% for it in toc_back %}<li><span>{{ it.name }}{% if it.id %}　<span class="small">{{ it.id }}</span>{% endif %}</span><span>p.{{ it.page }}–{{ it.page + 1 }}</span></li>{% endfor %}</ol>{% endif %}
+{% else %}
+<h2>出典とライセンス</h2>
+{% for l in credits %}<p class="small">{{ l }}</p>{% endfor %}
+{% endif %}
+{% elif kind == "left" %}
+<div class="who">
+{% if p.photo %}<img class="photo" src="{{ src(p.photo) }}" alt="">{% else %}<div class="monogram serif">{{ p.initial }}</div>{% endif %}
+<div><h1 class="serif">{{ p.name }}</h1>{% if p.jersey_id %}<div class="id">{{ p.jersey_id }}</div>{% endif %}{% if estimated %}<div class="est">推定</div>{% elif confirmed_n %}<div class="est">同一人物と確認　{{ confirmed_n }}場面</div>{% endif %}</div>
+<div class="work">{{ title }}　{{ date }}</div>
+</div>
+<div class="letter serif">{{ p.text }}</div>
+{% if p.pictures %}
+<h2>よかった場面</h2>
+<div class="shots">
+{% for it in p.pictures %}
+<figure class="shot" style="margin-left:0"><div class="frame"><img src="{{ src(it.image) }}" alt=""></div>
+<div class="cap"><b>{% if it.m.number %}{{ it.m.number }}　{% endif %}{{ it.m.when }}</b>{{ it.caption }}</div></figure>
+{% endfor %}
+</div>
+{% endif %}
+{% if not p.pictures and all_rows %}
+<h2>{{ rows_title or "記録されたよかった場面" }}</h2>
+<table class="ev"><tr><th>時刻</th><th>したこと</th><th>よかった理由</th></tr>
+{% for r in all_rows %}<tr><td style="white-space:nowrap">{{ r.when }}</td><td>{{ r.what }}</td><td>{{ r.why }}</td></tr>
+{% endfor %}</table>
+{% endif %}
+{% elif kind == "right" %}
+<div class="who">
+<div><h1 class="serif" style="font-size:1.4em">{{ p.name }}</h1>{% if p.jersey_id %}<div class="id">{{ p.jersey_id }}</div>{% endif %}</div>
+<div class="work">{{ title }}　{{ date }}</div>
+</div>
+{% if facts %}<ul class="facts">{% for f in facts %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+{{ b.charts(p, words) }}
+{% if rows and extras %}<h2>{{ rows_title or "根拠の場面" }}</h2>
+<table class="ev"><tr><th>時刻</th><th>したこと</th><th>よかった理由</th></tr>
+{% for r in rows %}<tr><td style="white-space:nowrap">{{ r.when }}</td><td>{{ r.what }}</td><td>{{ r.why }}</td></tr>
+{% endfor %}</table>{% endif %}
+{{ b.tips(p) }}
+{% if p.live %}<p class="status">確認状況：{{ p.live_label }}</p>
+{% for l in p.live_lines %}<p class="small">訂正の記録：{{ l }}</p>{% endfor %}{% endif %}
+{% if credits %}<div class="small" style="margin-top:6mm">{% for l in credits %}<p>{{ l }}</p>{% endfor %}</div>{% endif %}
+<p class="small">{{ ai_line }}</p>
+{% if p.ident_note %}<p class="small">{{ p.ident_note }}</p>{% endif %}
+{% endif %}
+</div>
+{% endblock %}

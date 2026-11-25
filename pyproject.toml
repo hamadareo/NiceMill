@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2",
     "pyyaml",
     "opencv-python-headless",
+    "segno",
     "pypdfium2",
     "jinja2",
     "weasyprint",

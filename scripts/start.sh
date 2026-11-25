@@ -31,8 +31,9 @@ for u in pfb-ui.service pfb-worker.service; do
 done
 
 # Where the screens listen (docs/https.md):
-#   PFB_UI_HOST  default 127.0.0.1 (the Tailscale IP, http). 127.0.0.1 for HTTPS through
-#                `tailscale serve` (scripts/https_serve.sh on), so nothing but the proxy reaches it.
+#   PFB_UI_HOST  default 127.0.0.1 (http; set the server's address to open it on the network).
+#                Keep 127.0.0.1 for HTTPS through `tailscale serve` (scripts/https_serve.sh on),
+#                so nothing but the proxy reaches it.
 #   PFB_UI_PORT  default 8501.
 #   PFB_UI_ENTRY default serve (ui/serve.py: the screens plus the resumable upload endpoint);
 #                app runs ui/app.py alone (Streamlit's own uploader only).

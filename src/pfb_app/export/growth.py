@@ -4,7 +4,9 @@
 works in date order (services.growth links them), each with
 - the work's title, date and activity;
 - whether its text is approved now (review.subject_status); only an approved text feeds the
-  counts, the chart and the quotes;
+  counts, the chart and the quotes. A 「あとから訂正」 work counts its newest text unless it is
+  reported wrong, and for a video only a person its PDF prints, with the PDF's scenes
+  (export.sheets.person_moments); such an entry carries its check state (`live_label`);
 - the good moments of that approved text per evaluation point (the profile categories the
   handout's chart uses; export.sheets.person_moments);
 - the sentences of the approved text (quotes).
@@ -33,6 +35,12 @@ NO_WORK = "承認した文章のある作業はまだありません。"
 ONE_WORK = "承認した文章のある作業は1件だけです。変化は、2件目の記録ができてからわかります。"
 NOTE = "場面の数は、動画の長さや映り方でも変わります。"
 NOT_APPROVED = "承認した文章がまだありません（数えていません）。"
+# a record with a 「あとから訂正」 work: the words without 承認 (a correct_later work counts its
+# newest text unless it is reported wrong, and, for a video, only a person its PDF prints)
+NO_WORK_ANY = "記録に使える文章のある作業はまだありません。"
+ONE_WORK_ANY = "記録に使える文章のある作業は1件だけです。変化は、2件目の記録ができてからわかります。"
+NOT_COUNTED_LIVE = ("この作業の文は数えていません（文がないか、誤りの報告を確認中か、"
+                    "同じ人と確かめられていないため）。")
 GRID_WORKS = 8          # the chart's newest works (the list below it has every work)
 MAX_RISES = 3
 _ENDS = "。！？!?"
@@ -52,8 +60,10 @@ class Entry:
     activity: str
     name: str                       # the person's name in this work
     how: str | None                 # "manual" | "suggested" | None (not linked)
-    approved: bool = False
+    approved: bool = False          # counted: approved now; 「あとから訂正」: the text in use
     auto: bool = False              # approved by the worker, not checked by a person
+    live: bool = False              # a 「あとから訂正」 work (AIが作成した文, never checked by approval)
+    live_label: str = ""            # its check state (訂正なし / 訂正済み 版N)
     counts: dict[str, int] = field(default_factory=dict)   # point label -> good moments
     moments: int = 0                # every good moment (also those without a point)
     quotes: list[str] = field(default_factory=list)
@@ -70,6 +80,11 @@ class Record:
     @property
     def approved(self) -> list[Entry]:
         return [e for e in self.entries if e.approved]
+
+    @property
+    def live(self) -> bool:
+        """The record has a 「あとから訂正」 work: its words never say 承認."""
+        return any(e.live for e in self.entries)
 
     @property
     def works(self) -> list[Entry]:
@@ -117,19 +132,29 @@ def sentences(text: str | None) -> list[str]:
 
 
 def _entry(repo: Repo, member: growth.Member, how: str | None,
-           points: dict[str, tuple[int, Category]]) -> Entry:
+           points: dict[str, tuple[int, Category]], clues: dict[int, bool] | None = None) -> Entry:
+    from pfb_app.services import corrections   # noqa: PLC0415
     work = repo.get_assignment(member.assignment_id)
+    live = corrections.mode_of(work) == corrections.CORRECT_LATER
     entry = Entry(member.subject_id, member.assignment_id, member.work_title, member.group_label,
                   member.when, str(work.get("created_at") or ""), member.order,
                   activity_of(work), member.name, how,
-                  known=frozenset(c.label for c in labels.categories_for(work)))
-    moments = sheets.person_moments(repo, member.subject_id)
+                  known=frozenset(c.label for c in labels.categories_for(work)), live=live)
+    clue = None
+    if live and work.get("kind") == "video" and clues is not None:   # once per work
+        from pfb_app.export import identity_gate   # noqa: PLC0415
+        if member.assignment_id not in clues:
+            clues[member.assignment_id] = identity_gate.work_has_clue(repo, work)
+        clue = clues[member.assignment_id]
+    moments = sheets.person_moments(repo, member.subject_id, clue)
     if moments is None:
         return entry
     subject = repo.get_subject(member.subject_id)
-    run = repo.get_run(subject["approved_run_id"])
+    run = corrections.usable_run(repo, subject, work)
     entry.approved = True
-    entry.auto = approved_automatically(repo, subject)
+    entry.auto = not live and approved_automatically(repo, subject)
+    if live:
+        entry.live_label = corrections.state(repo, member.subject_id).label
     entry.quotes = sentences((run.output or {}).get("pfb"))
     entry.moments = len(moments)
     counted = Counter(m.category.key for m in moments if m.category is not None)
@@ -145,7 +170,8 @@ def _entry(repo: Repo, member: growth.Member, how: str | None,
 def _record(repo: Repo, person_id: int | None, name: str, chosen: list[growth.Member],
             how: dict[int, str]) -> Record:
     points: dict[str, tuple[int, Category]] = {}
-    entries = [_entry(repo, m, how.get(m.subject_id), points) for m in chosen]
+    clues: dict[int, bool] = {}
+    entries = [_entry(repo, m, how.get(m.subject_id), points, clues) for m in chosen]
     ranked = sorted(points.items(), key=lambda kv: (kv[1][0], kv[0]))
     return Record(person_id, name, entries, [cat for _, (_, cat) in ranked])
 
@@ -200,9 +226,9 @@ def statements(rec: Record) -> list[str]:
     does not have is not a 0 there: nothing is compared with it."""
     done = rec.works
     if not done:
-        return [NO_WORK]
+        return [NO_WORK_ANY if rec.live else NO_WORK]
     if len(done) == 1:
-        return [ONE_WORK]
+        return [ONE_WORK_ANY if rec.live else ONE_WORK]
     first, last = done[0], done[-1]
     lines = [f"作業{len(done)}件の記録があります（{first.when}〜{last.when}）。"]
     top = _top(rec, done)

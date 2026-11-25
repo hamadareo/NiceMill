@@ -640,7 +640,7 @@ def _min_frames_agree(names_output: dict) -> int:
     """max(2, the gate's frames-agree count for numbers).
 
     The engine's number gate counts frames: its `threshold` is frames_agree k, the number of
-    frames that must read the same number (the engine Task 9 ruling), so it is the same unit
+    frames that must read the same number (the engine's design), so it is the same unit
     as name_fusion's min_frames_agree. An explicit `min_frames_agree` field of the gate, when
     present, is read first; `threshold` is the fallback."""
     gate = (names_output.get("gate") or {}).get("number") or {}
@@ -1009,6 +1009,35 @@ def confirm_identity(repo: Repo, submission_id: int) -> Confirmed:
     return ids
 
 
+PEOPLE_CHECKED = "people_checked"   # meta: identity run ids a person decided on 「人を確かめる」
+
+
+def mark_people_checked(repo: Repo, submission_id: int, cameras=None) -> list[int]:
+    """「人を確かめる」: the evaluator decided these cameras' mappings (every camera when None):
+    their latest identity runs are kept in the group's meta. export.identity_gate reads them:
+    in a 「あとから訂正」 work a person whose text stands on such mappings is printed even
+    without a read number. Returns the identity run ids recorded now."""
+    with repo._tx(join=True):
+        sub = repo.get_submission(submission_id)
+        meta = dict(sub["meta"] or {})
+        cams = list(cameras) if cameras is not None else sorted(
+            set(meta.get("cameras") or {}) | set(repo.list_cameras(submission_id)))
+        ids = {int(i) for i in meta.get(PEOPLE_CHECKED) or [] if isinstance(i, int)}
+        added = []
+        for cam in cams:
+            run = repo.latest_run(submission_id, Stage.identity, cam)
+            if usable(run) and run.id not in ids:
+                ids.add(run.id)
+                added.append(run.id)
+        if added:
+            meta[PEOPLE_CHECKED] = sorted(ids)
+            repo.update_submission_meta(submission_id, meta)
+    if added:
+        repo.audit("people_checked", f"submission:{submission_id}",
+                   {"cameras": cams, "identity_run_ids": added})
+    return added
+
+
 # --- manual PFB, approval ---
 
 def _is_stale(repo: Repo, run: StageRun) -> bool:
@@ -1209,7 +1238,7 @@ def _being_written(repo: Repo, subject: dict) -> str | None:
 
 
 def _approve_unseen(repo: Repo, subject_id: int, run_id: int | None, *,
-                    auto: bool) -> tuple[bool, str | None]:
+                    auto: bool, policy=None) -> tuple[bool, str | None]:
     """Approve `run_id` for the subject without a person reading it (全員まとめて承認, or the
     worker with `auto`), in one write transaction (BEGIN IMMEDIATE) that reads the subject,
     its latest text, the running steps and the gates again before it writes. Returns
@@ -1230,12 +1259,21 @@ def _approve_unseen(repo: Repo, subject_id: int, run_id: int | None, *,
                   or _skip_reason(repo, subject, run))
         if reason is not None:
             return False, reason
+        if auto:   # the machine checks (services.autoapprove): all must pass, each result is kept
+            from pfb_app.services import autoapprove   # noqa: PLC0415 - it imports this module
+            policy = policy or autoapprove.Policy()
+            verdict = autoapprove.evaluate(repo, subject, run, policy)
+            if not verdict.passed:
+                return False, (verdict.reasons or [SKIP_WARNINGS])[0]
+            repo.add_auto_approval(subject_id, run.id, autoapprove.POLICY_VERSION, policy.as_dict(),
+                                   [c.as_dict() for c in verdict.checks])
         repo.set_approval(subject_id, run.id, auto=auto)
         if auto:
             repo.audit(AUTO_APPROVED, f"subject:{subject_id}", {"run_id": run.id})
         else:
             repo.audit("approve", f"subject:{subject_id}", {"run_id": run.id, "bulk": True})
-        _confirm_tips(repo, subject_id)
+        if not auto:   # practice tips are confirmed by a person's approval only, never by a machine's
+            _confirm_tips(repo, subject_id)
     return True, None
 
 
@@ -1272,18 +1310,20 @@ def set_auto_approve(repo: Repo, assignment_id: int, on: bool) -> None:
     repo.audit("set_auto_approve", f"assignment:{assignment_id}", {"on": bool(on)})
 
 
-def auto_approve(repo: Repo, run: StageRun) -> bool:
+def auto_approve(repo: Repo, run: StageRun, policy=None) -> bool:
     """The worker, after a new feedback run: approve it when the work's option is on, it is
-    still the subject's latest text, nothing that feeds it is running and it needs no
-    person's look (`_skip_reason`: no text warnings, enough evidence, the approval gates
-    hold). True when approved; audit-logged as 'auto_approved'. A text a person approved
-    meanwhile stays theirs; anything else is left for a person on step 5."""
+    still the subject's latest text, nothing that feeds it is running and EVERY machine check
+    of services.autoapprove passes (the approval gates `_skip_reason`, the scenes exist and are
+    this person's, the person is the same in all of them, no unchecked action claim, no
+    comparison word, jersey numbers as 「N番？」 ...). True when approved; audit-logged as
+    'auto_approved' and recorded with each check's result. A text a person approved meanwhile
+    stays theirs; anything else is left for a person on step 5 with the reasons."""
     if run.stage != Stage.pfb or run.subject_id is None or run.status != "ok":
         return False
     submission = repo.get_submission(run.submission_id)
     if not repo.get_assignment(submission["assignment_id"]).get("auto_approve"):
         return False
-    new, _ = _approve_unseen(repo, run.subject_id, run.id, auto=True)
+    new, _ = _approve_unseen(repo, run.subject_id, run.id, auto=True, policy=policy)
     return new
 
 

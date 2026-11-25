@@ -269,14 +269,14 @@ def build(args) -> str:
             "|---|---|---|---|",
             "| M PLUS 1 (400/500/700/800, subset) | screens: body text | SIL OFL 1.1 | "
             "`src/pfb_app/ui/static/fonts/OFL.txt` |",
-            "| Dela Gothic One (subset) | screens: headings; the 「ナイスミル」 wordmark (as outlines "
+            "| Dela Gothic One (subset) | screens: headings; the 「NiceMill」 wordmark (as outlines "
             "in `ui/static/brand/*.svg`) | SIL OFL 1.1 | `src/pfb_app/ui/static/fonts/OFL.txt` |",
             "| Barlow Condensed (600/700, Latin) | screens: numbers | SIL OFL 1.1 | "
             "`src/pfb_app/ui/static/fonts/OFL.txt` |",
             "| Noto Sans / Serif CJK JP | PDFs (system font on the server, not vendored) | SIL OFL 1.1 | "
             "the OS package |", "",
             "The woff2 files and the logo files are built by `scripts/brand_assets.py` from the TTFs in "
-            "github.com/google/fonts (no Reserved Font Names). The ナイスミル mark and wordmark are this "
+            "github.com/google/fonts (no Reserved Font Names). The NiceMill mark and wordmark are this "
             "project's own.", ""]
     return "\n".join(out)
 

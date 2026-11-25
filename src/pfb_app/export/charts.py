@@ -36,7 +36,7 @@ INK_2 = "#59606b"
 RULE = "#cdd3db"
 TRACK = "#eef1f5"
 SURFACE = "#ffffff"
-# ナイスミル 「A コートサイド」 (dataviz validator: BAR passes the categorical lightness band and
+# NiceMill 「A コートサイド」 (dataviz validator: BAR passes the categorical lightness band and
 # chroma floor, RAMP the ordinal checks: one hue, monotone lightness, light end 2.07:1 on white)
 BAR = "#2b5aa6"          # court blue (the navy's mid step): one series, one colour (6.7:1 on white)
 BAND = "#cbd7ea"         # a pale court blue: the on-screen band under the moments' markers
@@ -220,7 +220,10 @@ def bar_chart(rows: Sequence[Bar], *, title: str, unit: str = "回",
     fmt = value_text or _count_text(unit)
     size = 10.5
     glyph_w = 18 if any(r.category for r in rows) else 0
-    label_w = min(max(_text_w(r.label, size) for r in rows) + 10, width * 0.45)
+    need = max(_text_w(r.label, size) for r in rows) + 10
+    cap = width * 0.45
+    lsize = size if need <= cap else max(size * (cap - 10) / (need - 10), 6.5)   # a long label shrinks, never runs under its bar
+    label_w = min(max(_text_w(r.label, lsize) for r in rows) + 10, max(cap, need if lsize == 6.5 else cap))
     value_w = max(_text_w(fmt(r.value), size) for r in rows) + 8
     x0 = glyph_w + label_w
     plot = max(width - x0 - value_w, 20)
@@ -234,7 +237,7 @@ def bar_chart(rows: Sequence[Bar], *, title: str, unit: str = "回",
         if r.category:
             shape, hue = _shape_of(r.category)
             body.append(_marker(shape, hue, 7, mid, 4.5))
-        body.append(_text(glyph_w, mid + size * 0.36, r.label, size=size))
+        body.append(_text(glyph_w, mid + lsize * 0.36, r.label, size=lsize))
         length = max(plot * r.value / top, 2.0)
         body.append(_rounded_bar(x0, mid - thick / 2, length, thick, colour))
         body.append(_text(x0 + length + 5, mid + size * 0.36, fmt(r.value), size=size,

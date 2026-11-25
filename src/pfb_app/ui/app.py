@@ -10,7 +10,7 @@ The sidebar menu is drawn here rather than by st.navigation: its 「ホーム」
 always leads back to the home screen, also from inside a work (a link to the page already
 shown would keep the open work).
 
-The app is called ナイスミル (theme.APP_NAME): the tab title, the tab icon and the logo in
+The app is called NiceMill (theme.APP_NAME): the tab title, the tab icon and the logo in
 the sidebar (st.logo) are set here, before the sign-in gate, so every screen carries them.
 
 Accounts (ui/auth_ui, services.auth): nothing is shown before the gate has a signed-in person

@@ -44,8 +44,9 @@ __all__ = ["ApprovedEntry", "ExportError", "collect_approved", "handout_parts", 
 
 _TASK_EXCERPT_CHARS = 200
 # the app's name and its black-and-white mark, small at the start of every page's footer
-BRAND_NAME = "ナイスミル"
-BRAND_MARK = Path(__file__).resolve().parents[1] / "ui" / "static" / "brand" / "nicemiru_mark_mono.svg"
+BRAND_NAME = "NiceMill"
+BRAND_COLOUR = "#C8410C"   # the app theme's primary (.streamlit/config.toml primaryColor)
+BRAND_MARK = Path(__file__).resolve().parents[1] / "ui" / "static" / "brand" / "nicemiru_mark_pdf.svg"
 _env = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"),
                    autoescape=select_autoescape(["html", "xml", "j2"], default=True),
                    trim_blocks=True, lstrip_blocks=True)
@@ -130,7 +131,7 @@ class _Assets:
     """The images a document may load: "asset:<id>" -> a file we put there ourselves. The id
     comes from the file's path, never from its order: the handouts are separate documents
     joined into one PDF, which keeps one image per URL, so an order number gave every person
-    the first person's pictures (production bug 2026-10-24)."""
+    the first person's pictures (a past bug; tests/test_pdf_v2.py)."""
 
     def __init__(self):
         self._paths: dict[str, Path] = {}
@@ -156,11 +157,36 @@ class _Assets:
         return _Local()
 
 
-def _report(repo: Repo, assignment_id: int) -> Report:
-    report = build_report(repo, assignment_id)
-    if not report.approved:
-        raise ExportError("承認済みのフィードバックがありません")
+NOTHING_LIVE = "PDFに入れられる文がありません"   # 「あとから訂正」: never the word 承認
+
+
+def _report(repo: Repo, assignment_id: int, drafts: bool = False) -> Report:
+    report = build_report(repo, assignment_id, drafts=drafts)
+    if not report.exported:
+        raise ExportError(NOTHING_LIVE if report.live else "承認済みのフィードバックがありません")
     return report
+
+
+def stored_credits(work: dict) -> list[str] | None:
+    """The work's own 出典 (作業の設定), one per line; None when it has none."""
+    lines = [line.strip() for line in (work.get("credits") or "").splitlines() if line.strip()]
+    return lines or None
+
+
+def org_contact(org) -> str | None:
+    """「訂正のご連絡先：…」 from 団体の設定 (None when it is not set)."""
+    text = (getattr(org, "contact", None) or "").strip()
+    return f"{labels.CONTACT_PREFIX}{text}" if text else None
+
+
+def _plain(repo: Repo, report: Report, assignment_id: int) -> dict[int, str]:
+    """The reworded texts (読み手に合わせた文章) the handouts show. In a 「あとから訂正」 work a
+    reworded text is made from the newest text (not while it is reported wrong) and is outdated
+    by a correction (services.plain_text.state), and the page says which version it rewords."""
+    return plain_text.handout_texts(repo, assignment_id)
+
+
+PLAIN_LIVE = "この文は、版{v}の文を、読む人に合わせて言いかえたものです。"   # 「あとから訂正」 pages
 
 
 def _org(repo: Repo):
@@ -168,11 +194,26 @@ def _org(repo: Repo):
     return organisation.load(repo.settings)
 
 
-def _common(report: Report, org, src) -> dict:
-    return dict(title=report.title, date=report.date, words=report.words, org=org,
+def _common(report: Report, org, src, credits=None, contact=None) -> dict:
+    if credits is None:
+        credits = stored_credits(report.work)     # 作業の設定's 出典
+    return dict(compact=report.drafts or report.live, brand_colour=BRAND_COLOUR, live=report.live, live_banner=labels.LIVE_BANNER, ai_line=labels.AI_LINE,
+                stamp=_stamp(), contact=(contact or org_contact(org) or labels.CONTACT_MISSING),
+                credits=_credit_lines(credits) if (credits is not None or report.drafts or report.live) else [], draft_note=labels.DRAFT_NOTE if report.drafts and any(s.draft for s in report.exported) else None, draft_banner=labels.DRAFT_BANNER, title=report.title, date=report.date, words=report.words, org=org,
                 accent=org.accent_hex, src=src, video=report.video, sports=report.sports,
                 footer=labels.footer_line(report.work, report.video),
                 brand_name=BRAND_NAME, brand_mark=BRAND_MARK)
+
+
+def _stamp() -> str:
+    from datetime import datetime   # noqa: PLC0415
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _credit_lines(credits) -> list[str]:
+    """The sources of the footage shown in the PDFs; never blank (a missing one says so)."""
+    lines = [c.strip() for c in (credits or []) if c and c.strip()]
+    return lines or [labels.CREDIT_MISSING]
 
 
 def approved_subject_ids(repo: Repo, assignment_id: int) -> list[int]:
@@ -189,27 +230,30 @@ def _growth_pages(repo: Repo, report: Report, org, on: bool) -> dict[int, dict]:
     if not on:
         return {}
     from pfb_app.export import growth   # noqa: PLC0415
-    records = growth.handout_records(repo, report.work["id"], [s.subject_id for s in report.approved])
+    records = growth.handout_records(repo, report.work["id"],      # approved, or 「あとから訂正」
+                                     [s.subject_id for s in report.exported if s.approved or s.live])
     return {sid: views.growth_page(rec, accent=org.accent_hex) for sid, rec in records.items()}
 
 
 def _handout_html(report: Report, sheets, org, src, *, screen: bool = False,
                   growth: dict[int, dict] | None = None,
-                  plain: dict[int, str] | None = None) -> str:
+                  plain: dict[int, str] | None = None, credits=None, contact=None) -> str:
     """`plain`: {subject id: the text their handout shows instead of the approved one}."""
     people = []
     for s in sheets:
         p = views.person(report, s, "handout", accent=org.accent_hex)
         if plain and s.subject_id in plain:
-            p = {**p, "text": plain[s.subject_id]}
+            p = {**p, "text": plain[s.subject_id],
+                 "plain_note": PLAIN_LIVE.format(v=s.live_version) if s.live else None}
         people.append({**p, "growth": (growth or {}).get(s.subject_id)})
     title = sheets[0].name if len(sheets) == 1 else report.title
     return _env.get_template("share.html.j2" if screen else "student.html.j2").render(
         people=people, screen=screen, page_title=f"{title}（{report.title}）"
-        if len(sheets) == 1 else report.title, **_common(report, org, src))
+        if len(sheets) == 1 else report.title, **_common(report, org, src, credits, contact))
 
 
-def _teacher_html(report: Report, org, src, notes: dict[int, dict] | None = None) -> str:
+def _teacher_html(report: Report, org, src, notes: dict[int, dict] | None = None,
+                  credits=None, contact=None) -> str:
     task = (report.work.get("task_text") or "").strip()
     excerpt = task[:_TASK_EXCERPT_CHARS] + ("…" if len(task) > _TASK_EXCERPT_CHARS else "")
     groups = [(team, [views.contact(report, s) for s in people])
@@ -217,28 +261,35 @@ def _teacher_html(report: Report, org, src, notes: dict[int, dict] | None = None
     return _env.get_template("teacher.html.j2").render(
         screen=False, page_title=report.title, task_excerpt=excerpt,
         cameras=[labels.camera_word(c) for c in report.cameras], people_count=len(report.sheets),
-        approved_count=len(report.approved), model=report.model,
+        approved_count=len(report.approved),
+        draft_count=sum(1 for s in report.exported if s.draft), live_count=sum(1 for s in report.exported if s.live), model=report.model,
         summary=views.summary(report, accent=org.accent_hex), groups=groups,
         courts=views.team_courts(report), short_note=labels.SHORT_NOTE,
-        plain_label=f"{report.words.people}に渡すPDFの文章",
+        plain_label=(f"{report.words.people}用のPDFの文章" if report.live
+                     else f"{report.words.people}に渡すPDFの文章"),
         team_tips=report.team_tips, team_tips_title=report.team_tips_title,
         people=[{**views.person(report, s, "evaluator", accent=org.accent_hex),
-                 "plain": (notes or {}).get(s.subject_id)} for s in report.approved],
-        **{**_common(report, org, src),   # never a person's check on an auto-approved sheet
+                 "plain": (notes or {}).get(s.subject_id)} for s in report.exported],
+        **{**_common(report, org, src, credits, contact),   # never a person's check on an auto-approved sheet
            "footer": labels.evaluator_footer_line(report.work, report.video,
-                                                  [s.auto for s in report.approved])})
+                                                  [s.auto for s in report.exported if s.approved],
+                                                  drafts=sum(1 for s in report.exported if s.draft),
+                                                  live=report.live)})
 
 
-def _html(template: str, repo: Repo, assignment_id: int) -> str:
+def _html(template: str, repo: Repo, assignment_id: int, drafts: bool = False, credits=None,
+          contact=None) -> str:
     """The HTML of a PDF (tests read it): the handouts one after the other, or the
     evaluator PDF."""
-    report, org = _report(repo, assignment_id), _org(repo)
+    report, org = _report(repo, assignment_id, drafts), _org(repo)
     assets = _Assets()
     if template == "teacher.html.j2":
-        return _teacher_html(report, org, assets.url, plain_text.handout_notes(repo, assignment_id))
-    plain = plain_text.handout_texts(repo, assignment_id)
-    return "\n".join(_handout_html(report, [s], org, assets.url, plain=plain)
-                     for s in report.approved)
+        return _teacher_html(report, org, assets.url,
+                             plain_text.handout_notes(repo, assignment_id),
+                             credits, contact)
+    plain = _plain(repo, report, assignment_id)
+    return "\n".join(_handout_html(report, [s], org, assets.url, plain=plain, credits=credits, contact=contact)
+                     for s in report.exported)
 
 
 def _document(html: str, assets: _Assets):
@@ -246,30 +297,35 @@ def _document(html: str, assets: _Assets):
 
 
 def _handout_documents(report: Report, org, growth: dict[int, dict] | None = None,
-                       plain: dict[int, str] | None = None) -> list:
+                       plain: dict[int, str] | None = None, credits=None, contact=None) -> list:
     docs = []
-    for sheet in report.approved:
+    for sheet in report.exported:
         assets = _Assets()
         docs.append(_document(_handout_html(report, [sheet], org, assets.url, growth=growth,
-                                            plain=plain), assets))
+                                            plain=plain, credits=credits, contact=contact), assets))
     return docs
 
 
-def render_teacher_pdf(repo: Repo, assignment_id: int) -> bytes:
-    report, org = _report(repo, assignment_id), _org(repo)
+def render_teacher_pdf(repo: Repo, assignment_id: int, *, drafts: bool = False,
+                       credits=None, contact=None) -> bytes:
+    """`drafts` (off by default): also carry the people whose text is not approved, each marked
+    未承認（下書き） on every page. `credits`: the footage sources printed on the cover."""
+    report, org = _report(repo, assignment_id, drafts), _org(repo)
     assets = _Assets()
     notes = plain_text.handout_notes(repo, assignment_id)
-    return _document(_teacher_html(report, org, assets.url, notes), assets).write_pdf()
+    return _document(_teacher_html(report, org, assets.url, notes, credits, contact), assets).write_pdf()
 
 
-def render_student_pdf(repo: Repo, assignment_id: int, *, growth: bool = False) -> bytes:
+def render_student_pdf(repo: Repo, assignment_id: int, *, growth: bool = False,
+                       drafts: bool = False, credits=None, contact=None) -> bytes:
     """`growth`: add the 「成長のまとめ」 page after the handout of each person whose record
     has two or more approved works up to this work (off by default)."""
-    report, org = _report(repo, assignment_id), _org(repo)
+    report, org = _report(repo, assignment_id, drafts), _org(repo)
     docs = _handout_documents(report, org, _growth_pages(repo, report, org, growth),
-                              plain_text.handout_texts(repo, assignment_id))
+                              _plain(repo, report, assignment_id), credits, contact)
     combined = docs[0].copy([page for d in docs for page in d.pages])
     combined.metadata.title = report.title          # not the first person's name
+    combined.metadata.generator = BRAND_NAME
     return combined.write_pdf()
 
 
@@ -284,11 +340,11 @@ def handout_parts(repo: Repo, assignment_id: int) -> list[tuple[int, str, bytes,
     """[(subject id, name, the person's handout PDF, their phone page)] in the handout order
     (services.kept saves them before a work's videos go)."""
     report, org = _report(repo, assignment_id), _org(repo)
-    plain = plain_text.handout_texts(repo, assignment_id)
+    plain = _plain(repo, report, assignment_id)
     docs = _handout_documents(report, org, plain=plain)
     return [(sheet.subject_id, sheet.name, doc.write_pdf(),
              share_page(report, sheet, org, plain=plain))
-            for sheet, doc in zip(report.approved, docs)]
+            for sheet, doc in zip(report.exported, docs)]   # the sheets the documents were made of
 
 
 def people_word(repo: Repo, assignment_id: int) -> str:
@@ -301,12 +357,12 @@ def render_student_zip(repo: Repo, assignment_id: int, *, growth: bool = False) 
     handout order (`growth`: as render_student_pdf)."""
     report, org = _report(repo, assignment_id), _org(repo)
     pages = _growth_pages(repo, report, org, growth)
-    plain = plain_text.handout_texts(repo, assignment_id)
+    plain = _plain(repo, report, assignment_id)
     docs = _handout_documents(report, org, pages, plain)
     buf = io.BytesIO()
-    total = len(report.approved)
+    total = len(report.exported)          # the sheets the documents were made of
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for k, (sheet, doc) in enumerate(zip(report.approved, docs), 1):
+        for k, (sheet, doc) in enumerate(zip(report.exported, docs), 1):
             name = labels.handout_file_name(k, sheet.name, total, fallback=report.words.people)
             z.writestr(name, doc.write_pdf())
             z.writestr(name[:-4] + ".html", share_page(report, sheet, org, pages, plain))

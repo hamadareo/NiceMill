@@ -81,6 +81,19 @@ class Sheet:
     text: str | None
     approved: bool
     auto: bool = False
+    draft: bool = False                  # unapproved text shown only by the draft option
+    ident_state: str | None = None        # 同一人物の確認 (correct_later): ok / doubt / mixed
+    ident_facts: dict = field(default_factory=dict)
+    ident_reasons: list[str] = field(default_factory=list)
+    ident_note: str = ""                  # the small note a printed person's page carries
+    ident_how: str = ""                   # how it was confirmed (identity_gate.NUMBER / CHECKED / NO_CLUE)
+    live: bool = False                   # 「あとから訂正」 work: the newest text, with its check state
+    live_label: str = ""                 # 訂正なし / 訂正済み 版N / 誤りの報告あり・確認中
+    live_version: int = 0
+    live_lines: list[str] = field(default_factory=list)   # the correction record
+    jersey: str | None = None            # draft export: the jersey-number label shown instead of the name
+    jersey_id: str | None = None         # ... and its small id line (人物ID n)
+    jersey_state: str | None = None
     manual: bool = False
     short: bool = False
     reason: str | None = None            # why someone is not in the PDF
@@ -100,7 +113,26 @@ class Sheet:
     team_tips: list[str] = field(default_factory=list)   # the group's, as confirmed
 
     @property
+    def ident_blocked(self) -> bool:
+        """同一人物の確認 kept the person out (a correct_later video; ident_how is set for everyone
+        it lets through, also those checked on 「人を確かめる」 or in a work without any clue)."""
+        return self.ident_state is not None and not self.ident_how
+
+    @property
+    def shown(self) -> str:
+        return self.jersey or self.name
+
+    @property
+    def shown_long(self) -> str:
+        """shown + the tracker id, for charts where several people may be 「背番号 不明」."""
+        return f"{self.jersey}（{self.jersey_id}）" if self.jersey and self.jersey_id else self.shown
+
+    @property
     def chips(self) -> list[str]:
+        if self.live:
+            return [self.live_label]
+        if self.draft:
+            return [labels.DRAFT]
         if not self.approved:
             return [labels.LEFT_OUT]
         out = [labels.AUTO if self.auto else labels.APPROVED]
@@ -157,9 +189,17 @@ class Report:
         from pfb_app.services import tips   # noqa: PLC0415
         return tips.team_title("sports" if self.sports else None)
 
+    drafts: bool = False                # built with the draft option
+    live: bool = False                  # a 「あとから訂正」 work
+
     @property
     def approved(self) -> list[Sheet]:
         return [s for s in self.sheets if s.approved]
+
+    @property
+    def exported(self) -> list[Sheet]:
+        """Who the PDFs carry: the approved, plus (draft option only) the unapproved with a text."""
+        return [s for s in self.sheets if s.approved or s.draft or s.live]
 
     @property
     def title(self) -> str:
@@ -249,8 +289,8 @@ class _Submission:
     """One submission's cameras and per-run caches, for every person in it."""
 
     def __init__(self, repo: Repo, work: dict, submission: dict, *, light: bool = False):
-        """`light`: only what the moments need (person_moments): a camera is its track run,
-        no boxes, video, court or teams are read."""
+        """`light`: only what the moments need (person_moments): a camera is its track run
+        and its mapping, no boxes, video, court or teams are read."""
         self.repo, self.work, self.submission = repo, work, submission
         self.light = light
         self.sid = submission["id"]
@@ -282,14 +322,15 @@ class _Submission:
         key = (name, track.id if track else None, identity.id if identity else None)
         if key in self._cams:
             return self._cams[key]
-        if self.light:
-            cam = _Camera(name, track if usable(track) else None, {}, None, None, None, None, {})
-            self._cams[key] = cam
-            return cam
         try:
             mapping = label_mapping(identity.output) if usable(identity) else {}
         except (KeyError, TypeError, ValueError):
             mapping = {}
+        if self.light:   # the mapping too: the identity gate reads the person's labels
+            cam = _Camera(name, track if usable(track) else None, mapping, None, None, None,
+                          None, {})
+            self._cams[key] = cam
+            return cam
         out = (track.output or {}) if usable(track) else {}
         boxes_path = out.get("boxes")
         raw = (self.meta.get("cameras") or {}).get(name)
@@ -558,27 +599,76 @@ def _picture_request(sub: _Submission, m: Moment, pid: str) -> pictures.PictureR
 
 
 def _sheet(repo: Repo, work: dict, sub: _Submission, subject: dict, video: bool,
-           several: bool) -> Sheet:
+           several: bool, drafts: bool = False, live: bool = False,
+           gate: bool = True, clue: bool = True) -> Sheet:
     from pfb_app.services import short_text
     status = subject_status(repo, subject["id"])
-    approved = status == SubjectStatus.approved
-    run = (repo.get_run(subject["approved_run_id"]) if approved
+    approved = status == SubjectStatus.approved and not live    # no approvals in a correct_later work
+    run = (repo.get_run(subject["approved_run_id"]) if approved and not live
            else repo.latest_run(sub.sid, Stage.pfb, subject_id=subject["id"]))
+    mode_live = live
+    has_text = bool(run is not None and (run.output or {}).get("pfb"))
+    live = bool(live and has_text)
+    draft = bool(drafts and not approved and not live and has_text)
+    shown = approved or draft or live
     warnings = run.warnings if run else []
     cited = list(((run.output or {}).get("evidence_refs") or []) if run else [])
     chain = _chain(repo, sub, run)
+    verdict = decision = None
+    # 「同一人物の確認」 (videos): only a person confirmed by the number or by a person's check on
+    # 「人を確かめる」 is printed, with the scenes that check allows; in a work with no clue for
+    # anybody, everyone is (export.identity_gate.decide). A document has no one to mix up (no
+    # tracking, no numbers): it is not checked.
+    if live and gate and video:
+        from pfb_app.export import identity_gate   # noqa: PLC0415
+        verdict = identity_gate.assess(repo, sub, subject, chain)
+        decision = identity_gate.decide(repo, sub.submission, subject, chain, verdict, clue)
+        if not decision.passed:
+            live = False
+            shown = approved or draft
     moments, false_count = _moments(work, sub, subject, chain, cited, several)
+    removed = 0
+    if decision is not None and live and decision.keep is not None:
+        kept = [m for m in moments if m.ref_id in decision.keep]
+        removed = len(moments) - len(kept)
+        moments = kept
+    if decision is not None and not live:      # not confirmed: nothing of it is counted or drawn
+        moments = []
     reason = None
-    if not approved:
+    if mode_live and has_text and decision is not None and not live:
+        reason = "同一人物の確認が取れていない：" + "、".join(verdict.reasons)
+    elif not shown:
         reason = labels.WHY_NOT.get(status, "")
-        if status == SubjectStatus.insufficient and short_text.offer(repo, subject, run):
+        if (status == SubjectStatus.insufficient and not mode_live
+                and short_text.offer(repo, subject, run)):
             reason = "短い文の承認待ち"
     sheet = Sheet(subject_id=subject["id"], name=subject["display_name"],
-                  text=(run.output or {}).get("pfb") if approved else None, approved=approved,
+                  text=(run.output or {}).get("pfb") if shown else None, approved=approved, draft=draft,
+                  live=live,
                   auto=approved and review.approved_automatically(repo, subject),
                   manual=MANUAL_WARNING in warnings, short=SHORT_MARK in warnings,
                   reason=reason, moments=moments, clock_offset_s=sub.clock_offset_s,
                   judgments_false=false_count)
+    if verdict is not None:
+        sheet.ident_state, sheet.ident_facts, sheet.ident_reasons = verdict.state, verdict.facts, verdict.reasons
+        sheet.ident_how = decision.how
+        if live and decision.how == identity_gate.NUMBER:
+            sheet.ident_note = (f"同一人物と確かめられた場面{len(moments)}件だけを使っています。"
+                                + (f"確かめられなかった場面{removed}件は除きました（文はそれらも含めて作られています）。" if removed else ""))
+        elif live and decision.how == identity_gate.CHECKED:
+            sheet.ident_note = "「人を確かめる」で確かめた人です。"
+        elif live and decision.how == identity_gate.NO_CLUE:
+            sheet.ident_note = ("背番号の読み取りも「人を確かめる」の記録もない作業のため、"
+                                "同じ人かどうかは確かめていません。")
+    if live:
+        from pfb_app.services import corrections   # noqa: PLC0415
+        st = corrections.state(repo, subject["id"])
+        sheet.live_label, sheet.live_version, sheet.live_lines = st.label, st.version, st.lines
+    if drafts or live or mode_live:
+        from pfb_app.export import jersey   # noqa: PLC0415
+        meta = repo.get_submission(sub.sid).get("meta") or {}
+        sheet.jersey, sheet.jersey_id, sheet.jersey_state = jersey.label(
+            subject, meta.get("name_source"))
     pid = subject.get("participant_id")
     chain_tracks = [_by_stage(repo, source, Stage.track) for _, source in chain]
     if video and pid and sub.retracking(chain_tracks):
@@ -595,7 +685,10 @@ def _sheet(repo: Repo, work: dict, sub: _Submission, subject: dict, video: bool,
             if not mine or cam.boxes is None or not cam.fps:
                 continue
             if sheet.duration_s:
-                spans += tracks.spans(cam.boxes.frames(mine), cam.fps, start_s=sub.start_s,
+                frames_mine = cam.boxes.frames(mine)
+                if decision is not None and live and decision.restrict:   # where the number is read
+                    frames_mine = verdict.restrict(cam.name, frames_mine)
+                spans += tracks.spans(frames_mine, cam.fps, start_s=sub.start_s,
                                       duration_s=sheet.duration_s)
             if cam.geometry is not None:
                 court.append((cam.fps, tracks.clean_samples(
@@ -610,38 +703,53 @@ def _sheet(repo: Repo, work: dict, sub: _Submission, subject: dict, video: bool,
         if teams:
             from pfb_app.services.auto_people import TEAM_WORDS
             sheet.team = TEAM_WORDS.get(teams.most_common(1)[0][0])
-        if approved:
-            shown = [m for m in sorted(moments, key=lambda m: cited.index(m.ref_id)
+        if shown:
+            shown_m = [m for m in sorted(moments, key=lambda m: cited.index(m.ref_id)
                                        if m.ref_id in cited else 99) if m.cited]
-            for m in shown[:MAX_PICTURES]:
+            for m in shown_m[:MAX_PICTURES]:
                 if m._source is not None and m.ref_id in sub.foreign(m._source):
                     m.other_person = True     # never a picture of another player
                     continue
                 m._request = _picture_request(sub, m, pid)
-    if approved and run is not None:
+    if shown and run is not None:
         sheet.provenance = _provenance(repo, run, chain, sheet)
-    if approved and video:
+    if (approved or live) and video:
         from pfb_app.services import tips   # noqa: PLC0415 - tips import the pipeline
-        sheet.tips = tips.for_pdf(repo, sub.sid, subject["id"])
-        sheet.team_tips = tips.team_for_pdf(repo, sub.sid)
+        sheet.tips = tips.for_pdf(repo, sub.sid, subject["id"], live=live)
+        sheet.team_tips = tips.team_for_pdf(repo, sub.sid, live=live)
     return sheet
 
 
-def person_moments(repo: Repo, subject_id: int) -> list[Moment] | None:
-    """The good moments of the person's approved text (as the handout counts them, with their
-    categories), or None when the person has no approved text now (review.subject_status:
-    an approval the text has outgrown does not count). Nothing but the database and the
-    engine's rows file is read (成長の記録 reads this for every work of a person)."""
+def person_moments(repo: Repo, subject_id: int, clue: bool | None = None) -> list[Moment] | None:
+    """The good moments of the person's text that the other features use (as the handout counts
+    them, with their categories), or None when there is none now: an approve work's approved
+    text (review.subject_status: an approval the text has outgrown does not count); a
+    correct_later work's newest text unless it is reported wrong (corrections.usable_run), and,
+    for a video, only when the person passes the PDF's 「同一人物の確認」, with the scenes it
+    allows (export.identity_gate.decide; `clue`: work_has_clue, when the caller has it).
+    Nothing but the database and the engine's rows file is read (成長の記録 reads this for
+    every work of a person)."""
+    from pfb_app.services import corrections   # noqa: PLC0415
     subject = repo.get_subject(subject_id)
-    if subject_status(repo, subject_id) != SubjectStatus.approved:
-        return None
     submission = repo.get_submission(subject["submission_id"])
     work = repo.get_assignment(submission["assignment_id"])
+    run = corrections.usable_run(repo, subject, work)
+    if run is None:
+        return None
     sub = _Submission(repo, work, submission, light=True)
-    run = repo.get_run(subject["approved_run_id"])
     cited = list((run.output or {}).get("evidence_refs") or [])
-    moments, _ = _moments(work, sub, subject, _chain(repo, sub, run), cited,
-                          len(sub.camera_names) > 1)
+    chain = _chain(repo, sub, run)
+    moments, _ = _moments(work, sub, subject, chain, cited, len(sub.camera_names) > 1)
+    if corrections.mode_of(work) == corrections.CORRECT_LATER and work["kind"] == Kind.video.value:
+        from pfb_app.export import identity_gate   # noqa: PLC0415
+        if clue is None:
+            clue = identity_gate.work_has_clue(repo, work)
+        decision = identity_gate.decide(repo, submission, subject, chain,
+                                        identity_gate.assess(repo, sub, subject, chain), clue)
+        if not decision.passed:
+            return None
+        if decision.keep is not None:
+            moments = [m for m in moments if m.ref_id in decision.keep]
     return moments
 
 
@@ -673,25 +781,39 @@ def _provenance(repo: Repo, run: StageRun, chain, sheet: Sheet) -> list[str]:
     return lines
 
 
-def group_sheets(repo: Repo, assignment_id: int, submission_id: int) -> tuple[_Submission,
-                                                                             list[Sheet]]:
+def group_sheets(repo: Repo, assignment_id: int, submission_id: int, *,
+                 gate: bool = False) -> tuple[_Submission, list[Sheet]]:
     """One video group's submission view and the sheets of its evaluated people (name
-    order), without pictures (試合・活動のまとめ: services.dashboard)."""
+    order), without pictures (試合・活動のまとめ: services.dashboard; 解説動画). A correct_later
+    work's sheets carry the newest texts with their check state (`live`); `gate`: and only
+    the people the PDF prints, with the scenes it uses (the 解説動画, which a participant sees;
+    the まとめ is the coach's and shows everyone, as for an approve work)."""
     work = repo.get_assignment(assignment_id)
     submission = repo.get_submission(submission_id)
     if submission["assignment_id"] != assignment_id:
         raise KeyError(f"submission {submission_id} is not in assignment {assignment_id}")
     sub = _Submission(repo, work, submission)
     several = len(sub.camera_names) > 1
-    sheets = [_sheet(repo, work, sub, subject, True, several)
+    live = work.get("review_mode") == "correct_later"
+    clue = True
+    if live and gate:
+        from pfb_app.export import identity_gate   # noqa: PLC0415
+        clue = identity_gate.work_has_clue(repo, work)
+    sheets = [_sheet(repo, work, sub, subject, True, several, live=live, gate=gate, clue=clue)
               for subject in repo.list_subjects(submission_id) if is_evaluated(subject)]
     sheets.sort(key=lambda s: name_order(s.name))
     return sub, sheets
 
 
-def build_report(repo: Repo, assignment_id: int, *, with_pictures: bool = True) -> Report:
+def build_report(repo: Repo, assignment_id: int, *, with_pictures: bool = True,
+                 drafts: bool = False, identity_gate: bool = True) -> Report:
     work = repo.get_assignment(assignment_id)
+    live = work.get("review_mode") == "correct_later"
     video = work["kind"] == Kind.video.value
+    clue = True
+    if live and video and identity_gate:
+        from pfb_app.export import identity_gate as gate_mod   # noqa: PLC0415
+        clue = gate_mod.work_has_clue(repo, work)
     sheets: list[Sheet] = []
     cameras: set[str] = set()
     requests: dict[Path, list[Moment]] = {}
@@ -705,7 +827,8 @@ def build_report(repo: Repo, assignment_id: int, *, with_pictures: bool = True) 
         for subject in repo.list_subjects(submission["id"]):
             if video and not is_evaluated(subject):
                 continue
-            sheet = _sheet(repo, work, sub, subject, video, several)
+            sheet = _sheet(repo, work, sub, subject, video, several, drafts, live, identity_gate,
+                           clue)
             sheets.append(sheet)
             mine.append(sheet)
             for m in sheet.moments:
@@ -718,7 +841,7 @@ def build_report(repo: Repo, assignment_id: int, *, with_pictures: bool = True) 
                 m.picture = made.get(m._request)
             pictures.prune(cache_dir, set(made.values()))
     for sheet in sheets:
-        if not sheet.approved:
+        if not (sheet.approved or sheet.draft or sheet.live):
             continue
         numbered = sorted((m for m in sheet.moments if m.picture is not None),
                           key=lambda m: (m.t_s or 0.0, m.ref_id))
@@ -733,8 +856,9 @@ def build_report(repo: Repo, assignment_id: int, *, with_pictures: bool = True) 
                          if f.path.is_file()]
                 m.thumb = shots[0] if shots else None
     sheets.sort(key=lambda s: name_order(s.name))
-    groups = [(label, next(t.team_tips for t in ss if t.approved and t.team_tips))
-              for label, ss in by_group if any(t.approved and t.team_tips for t in ss)]
+    # a group's tips are printed with someone of the group printed (approved, or 「あとから訂正」)
+    groups = [(label, next(t.team_tips for t in ss if (t.approved or t.live) and t.team_tips))
+              for label, ss in by_group if any((t.approved or t.live) and t.team_tips for t in ss)]
     return Report(work=work, words=labels.words_for(work), categories=labels.categories_for(work),
                   video=video, sheets=sheets, cameras=sorted(cameras), sports=labels.sports(work),
-                  team_tips=groups)
+                  team_tips=groups, drafts=drafts, live=live)

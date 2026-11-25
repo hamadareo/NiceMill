@@ -1,4 +1,4 @@
-"""Optional operator alerts (off by default), in the Discord-webhook style of the dev notifier.
+"""Optional operator alerts (off by default), in the Discord-webhook style.
 
 `alert_webhook_file` (settings) names a file that holds the webhook URL (keep it mode 600,
 outside git); the URL is never a setting, never logged and never shown (an error names only
@@ -35,7 +35,7 @@ from pfb_app.config import Settings, load_settings
 log = logging.getLogger(__name__)
 
 KINDS = {"info": 0x3498DB, "ok": 0x2ECC71, "warn": 0xE67E22, "error": 0xE74C3C}
-FOOTER = "ナイスミル（運用のお知らせ）"
+FOOTER = "NiceMill（運用のお知らせ）"
 TIMEOUT_SEC = 10
 
 

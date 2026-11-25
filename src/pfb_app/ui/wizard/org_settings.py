@@ -1,5 +1,6 @@
 """「団体の設定」 on the PDF step: the organisation's name, logo and colour for the PDFs and
-the one-person pages (services.organisation does the checks and the storing)."""
+the one-person pages, and the 訂正のご連絡先 of the 「あとから訂正」 handouts
+(services.organisation does the checks and the storing)."""
 import streamlit as st
 
 from pfb_app.services import organisation as org
@@ -9,6 +10,9 @@ TITLE = "団体の設定"
 GUIDE = ("PDFと一人ずつのページの上に、団体の名前とロゴが入ります。"
          "見出しの色は、読みやすい色の中から選べます。")
 SAVE = "団体の設定を保存"
+CONTACT = "訂正のご連絡先（入れなくてもかまいません）"
+CONTACT_HELP = ("「あとから訂正」の作業のPDFに「訂正のご連絡先：…」として入ります。"
+                "入れないと「団体の設定で連絡先を入力」と出ます。")
 SAVED = "保存しました。次に受け取るPDFから使われます。"
 
 
@@ -28,12 +32,16 @@ def render(settings) -> None:
                 type=["png", "jpg", "jpeg", "svg"], key="pfb_org_logo")
             remove = st.checkbox("今のロゴを外す", disabled=current.logo is None,
                                  key="pfb_org_remove")
+            contact = st.text_input(CONTACT, value=current.contact, max_chars=org.MAX_CONTACT,
+                                    key="pfb_org_contact", help=CONTACT_HELP,
+                                    placeholder="例：〇〇クラブ 事務局 03-0000-0000")
             saved = st.form_submit_button(SAVE)
         if saved:
             try:
                 org.save(settings, name=name, accent=accent,
                          logo=logo.getvalue() if logo is not None else None,
-                         logo_name=logo.name if logo is not None else None, remove_logo=remove)
+                         logo_name=logo.name if logo is not None else None, remove_logo=remove,
+                         contact=contact)
             except org.OrgError as e:
                 st.error(str(e))
             else:

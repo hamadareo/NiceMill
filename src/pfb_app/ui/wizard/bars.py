@@ -135,12 +135,16 @@ def nav_turn_html() -> str:
     return f'<span class="pfb-navpct">{_TURN_CHIP[0]}</span>'
 
 
-def approval_bar_html(approved: int, total: int, label: str | None = None) -> str:
-    """Step 5's counter, 「承認 1 / 全 3」, with a bar (the text alone when there is none)."""
+def approval_bar_html(approved: int, total: int, label: str | None = None, auto: int = 0) -> str:
+    """Step 5's counter, 「承認 1 / 全 3」, with a bar (the text alone when there is none).
+    `approved` counts a person's approvals only; `auto` (machine-checked, no person looked) is
+    said beside it and never added to it."""
     total = max(0, int(total))
     approved = max(0, min(total, int(approved)))
     text = f"承認 {approved} / 全 {total}"
     where = f'<span class="pfb-counter__group">{escape(label)}</span>' if label else ""
     bar = (_bar(approved, text, "approval", "sm", maximum=total) if total else "")
+    extra = (f'<span class="pfb-counter__auto"> ＋ 自動承認 {int(auto)}（人は未確認）</span>'
+             if auto else "")
     return (f'<p class="pfb-counter">{where}<span class="pfb-counter__n">{escape(text)}</span>'
-            f'{bar}</p>')
+            f'{extra}{bar}</p>')

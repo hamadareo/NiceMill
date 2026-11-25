@@ -60,6 +60,16 @@ STATE_WORDS = {
 STATE_CHIP = {NONE: "insufficient", MAKING: "processing", READY: "approved", FALLBACK: "your_turn",
               OUTDATED: "your_turn", UNAVAILABLE: "insufficient"}
 SOURCE_WORDS = {"model": "AIが作った文", "teacher": "手で直した文"}
+# 「あとから訂正」 works: the words without 承認 (the text it rewords is the newest one)
+LIVE_GUIDE = ("いまの文（AIが作成した文。訂正した人は訂正した文）を、読む人の年齢に合わせて言いかえた版を作れます。"
+              "書かれている意味や事実は変えません。元の文はそのまま残り、いつでも元の文にもどせます。"
+              "文を直すと、言いかえた文は作り直すまで使いません。")
+LIVE_ORIGINAL_TEXT = "元の文（いまの文）"
+LIVE_WHO = "参加者用のPDFの文章"
+
+
+def _live(work: dict) -> bool:
+    return work.get("review_mode") == "correct_later"
 POLL_SEC = 3
 HELP = [
     "「参加者に渡すPDFの文章」で、PDFに入れる文章を選びます。「13歳以上向け」は、承認した文章のままです。",
@@ -150,17 +160,18 @@ def _waiting(aid: int, level: str) -> None:
 
 
 def _person(repo: Repo, aid: int, subject: dict, group: str, level: str, several: bool,
-            off: frozenset[int], original: str) -> None:
+            off: frozenset[int], original: str, live: bool = False) -> None:
     shown = plain_text.state(repo, subject, level)
     name = f"{subject['display_name']}さん" + (f"（{group}）" if several else "")
     head = f"**{name}**"
     st.markdown(head)
-    chip = theme.status_chip(STATE_CHIP[shown.kind], STATE_WORDS[shown.kind])
+    word = plain_text.UNAVAILABLE_LIVE if live and shown.kind == UNAVAILABLE else STATE_WORDS[shown.kind]
+    chip = theme.status_chip(STATE_CHIP[shown.kind], word)
     source = SOURCE_WORDS.get(shown.source or "", "")
     st.html(chip + (f' <span class="pfb-dash-note">{escape(source)}</span>' if source else ""))
     left, right = st.columns(2)
     with left:
-        st.caption(ORIGINAL_TEXT)
+        st.caption(LIVE_ORIGINAL_TEXT if live else ORIGINAL_TEXT)
         st.text(original)
     with right:
         st.caption(THIS_TEXT)
@@ -191,10 +202,12 @@ def section(repo: Repo, work: dict) -> None:
     if not people:
         return
     picked = plain_text.choice(repo, aid)
+    live = _live(work)
     st.html(f'<h3 class="pfb-subhead">{escape(theme.L(TITLE))}</h3>')
-    _note(GUIDE)
+    _note(LIVE_GUIDE if live else GUIDE)
     options = list(plain_text.CHOICES)
-    st.radio(theme.L(WHO), options, index=options.index(picked.level), horizontal=True,
+    st.radio(theme.L(LIVE_WHO if live else WHO), options, index=options.index(picked.level),
+             horizontal=True,
              format_func=LABELS.get, key=f"pfb_plain_level_{aid}", on_change=_picked, args=(aid,))
     if picked.level == ORIGINAL:
         return
@@ -224,6 +237,6 @@ def section(repo: Repo, work: dict) -> None:
             found = pipeline_plain.approved_text(repo, subject)
             if found is None:
                 continue
-            _person(repo, aid, subject, group, level, several, picked.off, found[1])
+            _person(repo, aid, subject, group, level, several, picked.off, found[1], live)
             st.divider()
 

@@ -228,8 +228,9 @@ def test_wording_is_neutral_and_never_claims_a_human_check():
         text = src.read_text(encoding="utf-8")
         found = [w for w in SCHOOL_WORDS if w in text]
         assert not found, (src.name, found)
-    assert "評価する人が確認してから渡します" in model.DRAFT_NOTICE
-    assert "確認済み" not in model.DRAFT_NOTICE
+    assert model.DRAFT_NOTICE == "AIが作成した文です。違っていれば、あとから直せます。"
+    for word in ("承認", "渡す", "渡し", "下書き", "確認済み"):     # an output may go out unchecked
+        assert word not in model.DRAFT_NOTICE, word
 
 
 def test_nothing_to_show_and_stop(env, tmp_path):
@@ -291,7 +292,7 @@ def test_player_is_one_local_file_with_the_data_inside(env, tmp_path):
     labels = {lb for p in data["people"] for lb in p["labels"]}
     assert labels and set(data["tracks"]) == labels
     assert data["banner"] == model.DRAFT_NOTICE and data["credit"] == CREDIT
-    # the controls the user asked for exist
+    # the player's controls exist
     for needle in ('id="speed"', 'id="boxes"', 'id="tlinner"', "playbackRate", "currentTime"):
         assert needle in html
 
@@ -479,7 +480,7 @@ def test_cards_show_the_label_the_internal_id_and_the_number_note(monkeypatch):
     edit.end_card(pkg, p)
     text = "\n".join(drawn)
     flat = "".join(drawn)
-    assert "ナイスミル上の名前：選手2　追跡ID：P2" in text
+    assert "NiceMill上の名前：選手2　追跡ID：P2" in text
     assert labelling.DUPLICATE in text and model.NUMBER_NOTE_UNVERIFIED in text
     assert model.FIX_NOTE in text
     assert model.GATE_NOTE in flat and model.NO_MARK_NOTE in flat       # always on screen
@@ -1163,7 +1164,7 @@ def _browser_check(html_path, m):
         time.sleep(.5)
         js("document.getElementById('morebtn') && document.getElementById('morebtn').click()")
         card = js("return document.getElementById('card').textContent")
-        assert "ナイスミル上の名前" in card                                # the detail part is open
+        assert "NiceMill上の名前" in card                                # the detail part is open
         assert "元の文" not in card and "▲" in card and "要確認" in card
         # a switch that sits in the closed settings shows its state in the summary line (text, not colour alone)
         assert js("return document.getElementById('optstate').textContent.indexOf('スポットライト')") == -1

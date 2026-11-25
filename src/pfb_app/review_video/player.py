@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 from pfb_app.export.extra_boxes import player_rows
-from pfb_app.review_video import court_est, court_reg, everyone
+from pfb_app.review_video import calm, court_est, court_reg, everyone
 from pfb_app.review_video.model import (ACT_NOTE, COURT_EST_NOTE, TEAM_ADJUST_NOTE, TEAM_COLOUR_NOTE, ink_for, EVAL_AI_NOTE, EVAL_NONE_NOTE, EVAL_SHORT_NOTE, CLAIM_NOTE, EVENT_NOTE, EVENT_WEAK_NOTE, EXTRA_NOTE, BALL_NOTE, COURT_NOTE, CHECK_NOTE, NONPLAYER_SET_APART, TEAM_WORDS, team_color, date_in_title, CHECKED, DRAFT_NOTICE, FIX_NOTE, GATE_NOTE,
                                         KIND_GOOD, NO_MARK_NOTE, NUMBER_NOTE,
                                         NUMBER_NOTE_UNVERIFIED, SUSPECT_NOTE, Package)
@@ -118,6 +118,9 @@ def player_data(pkg: Package, video_name: str) -> dict:
     court_out = None
     if every and pkg.court and pkg.court.get("frames"):
         tracks, extras, court_out = _flag_outside(pkg.court["frames"], src, step, people, tracks, extras)
+    calm_rows, extra_tid = {}, None
+    if every:
+        calm_rows, extra_tid = _calm(src.fps or 30.0, step, tracks, extras)
     duration = max(latest + 10.0, (src.last_frame or 0) / src.fps if src.fps else 0.0)
     return {"title": pkg.title, "date": "" if date_in_title(pkg.title, pkg.date) else pkg.date, "video": video_name, "fps": src.fps,
             "size": list(src.size), "step": step, "preroll": PREROLL_S, "duration": duration,
@@ -136,7 +139,7 @@ def player_data(pkg: Package, video_name: str) -> dict:
             "credit": list(pkg.credit_lines), "notes": list(pkg.notes),
             "skipped_other_camera": skipped, "camera": cam,
             "court": ({"frames": pkg.court["frames"], "note": pkg.court["note"], "text": pkg.court.get("text") or COURT_NOTE} if pkg.court else None),
-            "court_out": court_out,
+            "court_out": court_out, "calm": calm_rows, "extra_tid": extra_tid,
             "ball": ({"segs": pkg.holders, "n": pkg.ball_frames, "note": BALL_NOTE}
                      if pkg.ball_frames else None)}
 
@@ -175,6 +178,28 @@ def _flag_outside(court_rows: list, src, step: int, people: list, tracks: dict, 
     return new_t, (new_e if new_e is not None else extras), {
         "margin_m": court_reg.OUT_MARGIN_M, "min_s": court_reg.OUT_MIN_S, "stay_s": court_reg.IN_STAY_S,
         "note": court_reg.OUT_NOTE, "rows": n_rows, "flagged": n_flag, "n": n_flag}
+
+
+def _calm(fps: float, step: int, tracks: dict, extras):
+    """A steady anchor (over the head) and a steady activity word for everyone (calm.py):
+    ({key: [[frame, ax, ay, act], ...]}, the key of each unnamed row's person). Keys: a track's label, or
+    "e<N>" for unnamed person N (the same linking as the page uses)."""
+    out = {}
+    for lb, rows in tracks.items():
+        rows = sorted(rows)
+        if rows:
+            out[lb] = calm.calm_entity(rows, [r[5] for r in rows], fps)
+    tid = None
+    if extras:
+        tid = everyone.link_rows([list(r[:5]) for r in extras], step)
+        by: dict[int, list] = {}
+        for i, t in enumerate(tid):
+            by.setdefault(t, []).append(i)
+        for t, idx in by.items():
+            idx.sort(key=lambda i: extras[i][0])
+            rows = [extras[i] for i in idx]
+            out["e%d" % t] = calm.calm_entity(rows, [r[6] for r in rows], fps)
+    return out, tid
 
 
 def _style_json(style):
@@ -425,6 +450,7 @@ button:focus-visible,select:focus-visible,input:focus-visible+span,.chip:focus-v
 <label class="tg"><input id="boxes" type="checkbox" checked><span>選んだ人の枠</span></label>
 <label class="tg"><input id="allbox" type="checkbox"><span>全員の枠</span></label>
 <label class="tg" id="tags-wrap"><input id="tags-on" type="checkbox" checked><span>全員の吹き出し（番号・いまの様子）</span></label>
+<label class="tg" id="act-wrap"><input id="act-all" type="checkbox"><span>全員の様子を常に表示</span></label>
 <label class="tg" id="court-wrap" style="display:none"><input id="court-on" type="checkbox" checked><span id="court-lbl">コートの枠（推定）</span></label>
 <label class="tg" id="ball-wrap" style="display:none"><input id="ball-on" type="checkbox" checked><span>ボール保持（推定）</span></label>
 <label class="tg" id="np-wrap" style="display:none"><input id="np-on" type="checkbox"><span>選手以外も表示</span></label>
@@ -512,6 +538,7 @@ function buildLegend(){var lg=document.getElementById("legend"),seen={},h='<span
  function sw(hex,rim,lbl){return '<span><span class="sw" style="background:'+hex+';border-color:'+rim+'"></span>'+esc(lbl)+'</span>'}
  players().forEach(function(q){var k=tw(q);if(!seen[k]){seen[k]=1;h+=sw(q.color,q.rim||rimFor(q.color),k)}});
  if(D.every)h+='<span><span class="sw" style="background:#8E9196;border-style:dotted;border-color:#000"></span>灰色の点線：選手以外かも（「選手以外も表示」で出ます）</span>';
+ if(D.every)h+='<span>頭上の札：番号は全員に。「いまの様子」の文は、選んだ人・ボールを持っていそうな人・見せ場の場面の人だけ（「全員の様子を常に表示」で全員）。</span>';
  if(D.ball)h+='<span><span class="ov"></span>赤い楕円：ボールを持っていそうな人（AIの予想・外れます）</span>';
  if(D.court_out&&D.court_out.n>0)h+='<span><span class="sw" style="background:#8E9196;border-style:dotted;border-color:#000"></span>コート外（控え・観客かも）：外周の外に'+D.court_out.min_s+'秒以上いる人（既定では枠なし。「選手以外も表示」で灰色の点線）</span>';
  if(D.court||D.court_est)h+='<span><span class="ln"></span>赤い線：コートの枠（推定）'+(D.court&&D.court.note?'（'+esc(D.court.note)+'）':'')+'</span>';
@@ -531,7 +558,7 @@ function buildChips(){chips.innerHTML="";
    b.innerHTML=dot+esc(p.tag)+(p.label_note?' <span class="n">・重複</span>':'');
    if(p.label_note&&p.label_note.indexOf("重複")<0)b.innerHTML=dot+esc(p.tag)+' <span class="n">・要確認</span>';
    if(p.excluded)b.innerHTML+=' <span class="n">・選手以外（推定）</span>';else if(p.nonplayer)b.innerHTML+=' <span class="n">・選手以外かも</span>';
-   b.title=pname(p)+"　ナイスミル上の名前："+p.name+(p.nonplayer?"　"+p.nonplayer:"");
+   b.title=pname(p)+"　NiceMill上の名前："+p.name+(p.nonplayer?"　"+p.nonplayer:"");
    b.addEventListener("click",function(){select(p.id,true)});row.appendChild(b)});
   chips.appendChild(row)});
  var r2=document.createElement("div");r2.className="tgrp";
@@ -562,7 +589,7 @@ function buildTl(){tlnames.innerHTML='<div style="height:20px"></div>';
  var d=dur();
  shownPeople().forEach(function(p){
   var nm=document.createElement("div");nm.className="nm";nm.dataset.id=p.id;nm.style.setProperty("--pc",p.color);var sp=document.createElement("span");
-  sp.textContent=p.tag;sp.title=pname(p)+"　ナイスミル上の名前："+p.name;nm.appendChild(sp);
+  sp.textContent=p.tag;sp.title=pname(p)+"　NiceMill上の名前："+p.name;nm.appendChild(sp);
   nm.addEventListener("click",function(){select(p.id,true)});tlnames.appendChild(nm);
   var row=document.createElement("div");row.className="row"+(p.id===sel?" sel":"");row.dataset.id=p.id;
   marksOf(p).forEach(function(m){var b=document.createElement("button");b.type="button";var k=kindOf(m);
@@ -607,12 +634,12 @@ function drawCard(p,am){
  if(more){h+='<div class="more">';
   if(am.kind!=="change"){if(am.what&&am.what!==mainText(am)&&!am.weak)h+='<div>したこと：'+esc(am.what)+'</div>';
    h+='<div>'+(am.kind==="good"?(am.cited?"よかった所（文の根拠）":"よかった所"):"行動の記録")+(am.category?'　'+esc(am.category):'')+'</div>'}
-  h+='<div>ナイスミル上の名前：'+esc(p.name)+(p.internal?'　追跡ID：'+esc(p.internal):'')+(p.status==="approved"?'':'　（文は下書き）')+'</div><div>'+esc(p.checked_note)+'</div></div>'}
+  h+='<div>NiceMill上の名前：'+esc(p.name)+(p.internal?'　追跡ID：'+esc(p.internal):'')+(p.status==="approved"?'':'　（文は下書き）')+'</div><div>'+esc(p.checked_note)+'</div></div>'}
  card.innerHTML=h;var mb=document.getElementById("morebtn");mb.addEventListener("click",function(){more=!more;lastKey=null;draw()})}
 
 // --- the closed list
 function buildList(){var box=document.getElementById("listbody");box.innerHTML="";var p=person(sel);if(!p)return;
- if(p.text_withheld){var wd=document.createElement("div");wd.style.cssText="font-weight:700;margin-top:6px;color:#b45309";wd.textContent="▲要確認：動作の確認で弱めた場面があるため、AIの下書きの文（全文）はここに出しません。ナイスミルの確認画面で読み、映像で確かめてください。";box.appendChild(wd)}
+ if(p.text_withheld){var wd=document.createElement("div");wd.style.cssText="font-weight:700;margin-top:6px;color:#b45309";wd.textContent="▲要確認：動作の確認で弱めた場面があるため、AIの下書きの文（全文）はここに出しません。NiceMillの確認画面で読み、映像で確かめてください。";box.appendChild(wd)}
  if(p.text){var hd=document.createElement("div");hd.style.cssText="font-weight:700;margin-top:6px";hd.textContent="AIの下書きの文（そのまま）";box.appendChild(hd);var tx=document.createElement("div");tx.style.cssText="color:#4a5651;white-space:pre-wrap;margin:2px 0 6px";tx.textContent=p.text;box.appendChild(tx)}
  p.moments.filter(vis).forEach(function(m){var e=document.createElement("div");e.className="mom";e.tabIndex=0;e.dataset.key=p.id+"|"+m.id;e.setAttribute("role","button");
   e.innerHTML='<span class="t">'+esc(clock(m.t))+'</span>　'+esc(mainText(m))+(flagged(m)?'　<b style="color:#b45309">▲要確認</b>':'');
@@ -637,8 +664,8 @@ v.addEventListener("ratechange",function(){var sp=document.getElementById("speed
  if(slowOn){slowOn=false;slowUser=true}lastSet=r;if([].some.call(sp.options,function(o){return Number(o.value)===r}))sp.value=String(r)});
 document.getElementById("boxes").addEventListener("change",draw);document.getElementById("allbox").addEventListener("change",draw);
 if(D.court||D.court_est){document.getElementById("court-wrap").style.display="";document.getElementById("court-on").addEventListener("change",draw);if(D.court)document.getElementById("court-lbl").textContent=(D.court.note==="登録"?"コートの枠（登録）":"コートの枠（登録・追跡は推定）")}
-if(D.every){document.getElementById("allbox").checked=true}else{document.getElementById("tags-wrap").style.display="none"}
-document.getElementById("tags-on").addEventListener("change",draw);
+if(D.every){document.getElementById("allbox").checked=true}else{document.getElementById("tags-wrap").style.display="none";document.getElementById("act-wrap").style.display="none"}
+document.getElementById("tags-on").addEventListener("change",draw);document.getElementById("act-all").addEventListener("change",draw);
 if(D.ball){document.getElementById("ball-wrap").style.display="";document.getElementById("ball-on").addEventListener("change",draw)}
 (function(){var any=D.people.some(function(q){return q.excluded})||!!(D.court_out&&D.court_out.n>0);if(!any)return;var w=document.getElementById("np-wrap");w.style.display="";
  document.getElementById("np-on").addEventListener("change",function(e){showNP=e.target.checked;if(!showNP&&person(sel)&&isOut(person(sel))){var f=players()[0];sel=f?f.id:null}buildChips();buildEval();buildTl();buildList();lastKey=null;draw()});
@@ -753,7 +780,7 @@ function layout(){var w=v.clientWidth,h=v.clientHeight;var dpr=window.devicePixe
  if(cv.width!==Math.round(cw*dpr)||cv.height!==Math.round(ch*dpr)){cv.width=Math.round(cw*dpr);cv.height=Math.round(ch*dpr)}
  return {cw:cw,ch:ch,dpr:dpr}}
 var settle=0,nowKey=null;
-function optState(){var on=[["f-live","実況メモ"],["f-auto","連続再生"],["f-slow","0.5倍速"],["f-spot","スポットライト"],["f-trail","足跡"],["np-on","選手以外も表示"]],off=[["cm-on","コメント"],["boxes","選んだ人の枠"],["allbox","全員の枠"],["tags-on","全員の吹き出し"]],a=[],b=[];
+function optState(){var on=[["f-live","実況メモ"],["f-auto","連続再生"],["f-slow","0.5倍速"],["f-spot","スポットライト"],["f-trail","足跡"],["np-on","選手以外も表示"],["act-all","全員の様子を常に表示"]],off=[["cm-on","コメント"],["boxes","選んだ人の枠"],["allbox","全員の枠"],["tags-on","全員の吹き出し"]],a=[],b=[];
  on.forEach(function(x){var e=document.getElementById(x[0]);if(e&&e.checked)a.push(x[1])});off.forEach(function(x){var e=document.getElementById(x[0]);if(e&&!e.checked)b.push(x[1])});
  var s=(a.length?"　オン："+a.join("・"):"")+(b.length?"　オフ："+b.join("・"):"");var el=document.getElementById("optstate");if(el.textContent!==s)el.textContent=s}
 function draw(){settle=20;optState();render()}
@@ -761,9 +788,9 @@ var statLast={framed:0,tagged:0,compact:0,skipped:0,visible:0};
 function exAt(frame){if(!D.extras)return [];if(!EXI){EXI={};D.extras.forEach(function(r){(EXI[r[0]]=EXI[r[0]]||[]).push(r)})}return EXI[Math.round(frame/D.step)*D.step]||[]}
 function tmColor(tm){return tm===1&&STY?STY.A.hex:(tm===2&&STY?STY.B.hex:(tm===1?"#0072B2":(tm===2?"#CC79A7":"#8E9196")))}
 function everyoneAt(frame){var out=[];
- players().forEach(function(q){q.labels.forEach(function(l){var b=boxAt(l,frame);if(!b)return;out.push({b:b,q:q,tm:q.tm==="A"?1:(q.tm==="B"?2:0),act:b[5]|0,sel:q.id===sel,np:!!q.excluded})})});
- Object.keys(T).forEach(function(l){if(LP[l])return;var b=boxAt(l,frame);if(!b)return;var tm=(D.others_team&&D.others_team[l])||0,o=!!b[6];out.push({b:b,q:null,tm:tm,act:b[5]|0,sel:false,np:!tm||!!NP[l]||o,co:o&&!!tm&&!NP[l]})});
- exAt(frame).forEach(function(r){var tm=r[5]|0,o=!!r[7];out.push({b:r,q:null,tm:tm,act:r[6]|0,sel:false,np:!tm||o,co:o&&!!tm})});
+ players().forEach(function(q){q.labels.forEach(function(l){var b=boxAt(l,frame);if(!b)return;out.push({b:b,q:q,l:l,key:l,tm:q.tm==="A"?1:(q.tm==="B"?2:0),act:b[5]|0,sel:q.id===sel,np:!!q.excluded})})});
+ Object.keys(T).forEach(function(l){if(LP[l])return;var b=boxAt(l,frame);if(!b)return;var tm=(D.others_team&&D.others_team[l])||0,o=!!b[6];out.push({b:b,q:null,l:l,key:l,tm:tm,act:b[5]|0,sel:false,np:!tm||!!NP[l]||o,co:o&&!!tm&&!NP[l]})});
+ exAt(frame).forEach(function(r){var tm=r[5]|0,o=!!r[7];out.push({b:r,q:null,key:extraKey(r),tm:tm,act:r[6]|0,sel:false,np:!tm||o,co:o&&!!tm})});
  return out.filter(function(e){return !e.np||showNP}).sort(function(a,b){return (b.np-a.np)||((a.b[2]+a.b[4])-(b.b[2]+b.b[4]))})}
 function drawEveryone(es,sx,sy){es.forEach(function(e){var b=e.b,x=b[1]*sx,y=b[2]*sy,w=b[3]*sx,h=b[4]*sy;
   var col=e.np?"#8E9196":(e.q?e.q.color:tmColor(e.tm)),rim=rimFor(col),dashed=e.np||(e.q&&e.q.dashed)||(!e.q&&!e.np&&false);
@@ -774,25 +801,77 @@ function drawEveryone(es,sx,sy){es.forEach(function(e){var b=e.b,x=b[1]*sx,y=b[2
 var tw_cache={};
 function twid(str,fs){var k=fs+str;if(tw_cache[k]==null)tw_cache[k]=ctx.measureText(str).width;return tw_cache[k]}
 function rrect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
-function drawTags(L,es,sx,sy,sp){var phone=L.cw<520,fs=phone?9:Math.max(9,Math.min(13,L.cw/105)),placed=[],st={framed:es.length,tagged:0,compact:0,skipped:0,visible:es.length},selBox=document.getElementById("boxes").checked;
- ctx.font="bold "+fs+"px sans-serif";ctx.textBaseline="alphabetic";
- es.slice().sort(function(a,b){return (b.sel-a.sel)||(b.b[4]-a.b[4])}).forEach(function(e){
-  if(e.np){return}if(e.q&&sp[e.q.id]){st.tagged++;return}
-  var num=e.q?e.q.tag:"番号不明",act=(D.act_words&&D.act_words[e.act])||"";
-  var modes=(act&&!phone)?[[num,act],[num]]:[[num]],cx=(e.b[1]+e.b[3]/2)*sx,top=e.b[2]*sy-(e.sel&&selBox?26:0),done=false;
-  for(var mi=0;mi<modes.length&&!done;mi++){var ls=modes[mi],w=Math.max.apply(null,ls.map(function(z){return twid(z,fs)}))+10,lh=fs+2,h=ls.length*lh+5;
-   for(var k=0;k<4&&!done;k++){var y=top-h-7-k*(h+2);if(y<1)break;
-    for(var di=0;di<3&&!done;di++){var x=Math.max(2,Math.min(cx-w/2+[0,0.62*w,-0.62*w][di],L.cw-w-2)),hit=false;
-     for(var n=0;n<placed.length;n++){var q=placed[n];if(x<q.x+q.w&&q.x<x+w&&y<q.y+q.h&&q.y<y+h){hit=true;break}}
-     if(hit)continue;
-     placed.push({x:x,y:y,w:w,h:h});var col=e.q?e.q.color:tmColor(e.tm),rim=rimFor(col);
-     ctx.fillStyle="rgba(255,255,255,.94)";rrect(x,y,w,h,4);ctx.fill();
-     ctx.lineWidth=e.sel?5:3.6;ctx.strokeStyle=rim;ctx.stroke();ctx.lineWidth=e.sel?3:1.8;ctx.strokeStyle=col;ctx.stroke();
-     var tx=Math.max(x+6,Math.min(cx,x+w-6));ctx.fillStyle=rim;ctx.beginPath();ctx.moveTo(tx-4,y+h);ctx.lineTo(tx+4,y+h);ctx.lineTo(tx,y+h+5);ctx.closePath();ctx.fill();
-     ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(tx-2.5,y+h);ctx.lineTo(tx+2.5,y+h);ctx.lineTo(tx,y+h+3.2);ctx.closePath();ctx.fill();
-     ctx.fillStyle="#1a1f1d";ls.forEach(function(z,zi){ctx.font=(zi?"":"bold ")+fs+"px sans-serif";ctx.fillText(z,x+5,y+3+lh*(zi+1)-2)});ctx.font="bold "+fs+"px sans-serif";
-     st.tagged++;if(mi>0)st.compact++;done=true}}}
+var CAL=D.calm||{},CALI={},ETID=null;
+function calmAt(key,frame){var s=CALI[key];if(!s){var rows=CAL[key];if(!rows||!rows.length)return null;s=CALI[key]={f:rows.map(function(r){return r[0]}),r:rows}}
+ var f=s.f,lo=0,hi=f.length-1;while(lo<hi){var m=(lo+hi)>>1;if(f[m]<frame)lo=m+1;else hi=m}
+ var b=s.r[lo],a=lo>0?s.r[lo-1]:null;
+ if(a&&b&&f[lo]>=frame&&f[lo]-f[lo-1]<=2*D.step){var u=(frame-f[lo-1])/Math.max(1,f[lo]-f[lo-1]);return {ax:a[1]+(b[1]-a[1])*u,ay:a[2]+(b[2]-a[2])*u,act:u<.5?a[3]:b[3]}}
+ var best=b,bf=f[lo];if(a&&Math.abs(f[lo-1]-frame)<Math.abs(bf-frame)){best=a;bf=f[lo-1]}
+ return Math.abs(bf-frame)<=D.step?{ax:best[1],ay:best[2],act:best[3]}:null}
+function extraKey(r){if(!D.extra_tid)return null;if(!ETID){ETID=new Map();D.extras.forEach(function(x,i){ETID.set(x,D.extra_tid[i])})}var t=ETID.get(r);return t==null?null:"e"+t}
+function holderLbl(frame){if(!D.ball)return null;for(var i=0;i<D.ball.segs.length;i++){var g=D.ball.segs[i];if(frame>=g[0]&&frame<=g[1])return g[2]}return null}
+function ease(cur,tgt,db){var d=tgt-cur;if(Math.abs(d)<=db)return cur;var m=(d-(d>0?db:-db))*0.2;return cur+Math.max(-12,Math.min(12,m))}
+var TS={},tsT=-1,SENT_RETRY=2.5,FADE_S=0.2,HOLD_GHOST=0.6;
+function drawChip(x,y,w,h,ls,col,rim,sel,tx,ay,fs,lh,alpha){
+ ctx.globalAlpha=alpha;
+ ctx.fillStyle="rgba(255,255,255,.95)";rrect(x,y,w,h,5);ctx.fill();
+ ctx.lineWidth=sel?5:3.6;ctx.strokeStyle=rim;ctx.stroke();ctx.lineWidth=sel?3:2;ctx.strokeStyle=col;ctx.stroke();
+ var apex=Math.max(y+h+4,Math.min(ay-2,y+h+14));
+ ctx.fillStyle=rim;ctx.beginPath();ctx.moveTo(tx-6,y+h);ctx.lineTo(tx+6,y+h);ctx.lineTo(tx,apex+2);ctx.closePath();ctx.fill();
+ ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(tx-3.5,y+h);ctx.lineTo(tx+3.5,y+h);ctx.lineTo(tx,apex-1);ctx.closePath();ctx.fill();
+ ctx.fillStyle="#1a1f1d";ls.forEach(function(z,zi){ctx.font=(zi?"":"bold ")+fs+"px sans-serif";ctx.fillText(z,x+(w>60?8:5),y+(h>lh*ls.length+5?4:2)+lh*(zi+1)-3)});
+ ctx.globalAlpha=1}
+function drawTags(L,es,sx,sy,sp){
+ var t=v.currentTime||0,frame=Math.round(t*D.fps)+1,jump=(Math.abs(t-tsT)>0.5||t<tsT-0.01),dt=jump?0:Math.min(0.1,Math.max(0,t-tsT));
+ if(jump)TS={};tsT=t;
+ var phone=L.cw<520,fs=Math.max(phone?10:11,Math.min(34,Math.round(L.ch*0.026))),lh=fs+(phone?3:5),placed=[],st={framed:es.length,tagged:0,compact:0,skipped:0,visible:es.length},selBox=document.getElementById("boxes").checked;
+ var showAll=document.getElementById("act-all").checked,ballOn=D.ball&&document.getElementById("ball-on").checked,hl=ballOn?holderLbl(frame):null,live={},seen={};
+ D.people.forEach(function(q){if(activeMark(q,t))live[q.id]=1});
+ ctx.textBaseline="alphabetic";
+ var list=[];
+ es.forEach(function(e){if(e.np)return;if(e.q&&sp[e.q.id]){st.tagged++;return}
+  var key=e.key||(e.q?"q"+e.q.id:null),c=e.key?calmAt(e.key,frame):null;
+  var ax=(c?c.ax:(e.b[1]+e.b[3]/2))*sx,ay=(c?c.ay:e.b[2])*sy,act=c?c.act:(e.act|0);
+  var word=(D.act_words&&D.act_words[act])||"";
+  var want=!!word&&(phone?e.sel:(showAll||e.sel||(hl&&e.l===hl)||(e.q&&live[e.q.id])));
+  list.push({e:e,key:key||("x"+Math.round(e.b[1])),ax:ax,ay:ay,word:word,want:want})});
+ list.sort(function(a,b){return (b.e.sel-a.e.sel)||(b.want-a.want)||(b.e.b[4]-a.e.b[4])});
+ function free(x,y,w,h){for(var n=0;n<placed.length;n++){var q=placed[n];if(x<q.x+q.w&&q.x<x+w&&y<q.y+q.h&&q.y<y+h)return false}return true}
+ list.forEach(function(it){var e=it.e,key=it.key;seen[key]=1;
+  var s=TS[key];if(!s){s=TS[key]={a:jump||v.paused?1:0,x:null,y:null,k:0,di:0,noSent:-1,sent:null,failSince:null,last:null,seen:t}}
+  s.seen=t;
+  if(it.want){if(!(s.wantUntil>t))s.wantStart=t;s.wantUntil=Math.max(s.wantStart+2.5,t+1.5)}   // a sentence shows at least 2.5 s and rides over gaps shorter than 1.5 s
+  var wantNow=it.want||s.wantUntil>t;
+  var num=e.q?e.q.tag:"番号不明",col=e.q?e.q.color:tmColor(e.tm),rim=rimFor(col),top=it.ay-(e.sel&&selBox?26:0),done=false;
+  var modes=(wantNow&&it.word&&s.noSent<=t)?[2,1]:[1];
+  for(var mi=0;mi<modes.length&&!done;mi++){var md=modes[mi],ls=md===2?[num,it.word]:[num];
+   ctx.font="bold "+fs+"px sans-serif";var w=twid(num,fs);if(md===2){ctx.font=fs+"px sans-serif";w=Math.max(w,twid(it.word,"p"+fs))}w+=phone?10:16;var h=ls.length*lh+(phone?4:8);
+   var cands=[[s.k,s.di]];for(var k=0;k<4;k++)for(var di=0;di<3;di++)if(k!==s.k||di!==s.di)cands.push([k,di]);
+   var put=null;
+   for(var ci=0;ci<cands.length&&!put;ci++){var kk=cands[ci][0],dd=cands[ci][1],ty=top-h-8-kk*(h+3);if(ty<1)continue;
+    var tx=Math.max(2,Math.min(it.ax-w/2+[0,0.62*w,-0.62*w][dd],L.cw-w-2)),ex=tx,ey=ty;
+    if(s.x!==null){ex=ease(s.x,tx,6);ey=ease(s.y,ty,4)}
+    var X=Math.round(ex),Y=Math.round(ey);
+    if(free(tx,ty,w,h)&&free(X,Y,w,h))put={k:kk,di:dd,x:ex,y:ey,X:X,Y:Y,w:w,h:h}}
+   if(!put&&md===2&&s.mode===2&&s.last){      // the sentence does not fit just now: keep it where it is for a moment
+    if(s.failSince==null)s.failSince=t;
+    if(t-s.failSince<0.6||t-(s.sentStart||0)<2.5){var g=s.last;put={k:s.k,di:s.di,x:s.x,y:s.y,X:g.X,Y:g.Y,w:g.w,h:g.h,held:1}}}
+   if(!put)continue;
+   if(md===2&&s.mode!==2)s.sentStart=t;
+   s.k=put.k;s.di=put.di;s.x=put.x;s.y=put.y;s.mode=md;if(!put.held)s.failSince=null;
+   placed.push({x:put.X,y:put.Y,w:put.w,h:put.h});
+   s.a=Math.min(1,s.a+(dt?dt/FADE_S:(v.paused?1:0)));
+   var tail=Math.max(put.X+9,Math.min(it.ax,put.X+put.w-9));
+   drawChip(put.X,put.Y,put.w,put.h,ls,col,rim,e.sel,tail,it.ay,fs,lh,s.a);
+   s.last={X:put.X,Y:put.Y,w:put.w,h:put.h,ls:ls,col:col,rim:rim,sel:e.sel,tail:tail,ay:it.ay};
+   if(window.__tl)window.__tl.push({t:t,x:put.X,y:put.Y,w:put.w,h:put.h,txt:ls.join("|"),fs:fs,ax:(e.b[1]+e.b[3]/2)*sx,ay:e.b[2]*sy-(e.sel&&selBox?26:0),sax:it.ax,say:top,sel:e.sel?1:0,q:e.q?e.q.id:-1});
+   st.tagged++;
+   if(md===1&&wantNow&&modes.length===2){s.noSent=t+SENT_RETRY;st.compact++}   // a chip only: the sentence did not fit; not tried again for a while
+   done=true}
   if(!done)st.skipped++});
+ Object.keys(TS).forEach(function(k){var s=TS[k];if(seen[k])return;var gap=t-s.seen;
+  if(gap>1||gap<0){delete TS[k];return}
+  if(s.last&&gap<=HOLD_GHOST){var g=s.last;drawChip(g.X,g.Y,g.w,g.h,g.ls,g.col,g.rim,g.sel,g.tail,g.ay,fs,lh,s.a*(1-gap/HOLD_GHOST))}});
  statLast=st}
 function courtAt(frame){var S=D.court.frames,lo=0,hi=S.length;while(lo<hi){var m=(lo+hi)>>1;if(S[m][0]<frame)lo=m+1;else hi=m}
  var a=lo>0?S[lo-1]:null,b=lo<S.length?S[lo]:null,i,o=[];

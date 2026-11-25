@@ -1,4 +1,4 @@
-"""ナイスミル: the app's name, logo, tab title and icon, and the brand files they use."""
+"""NiceMill: the app's name, logo, tab title and icon, and the brand files they use."""
 import ast
 import importlib.util
 import re
@@ -22,7 +22,7 @@ def _brand_script():
 
 
 def test_the_name_and_tagline():
-    assert theme.APP_NAME == "ナイスミル"
+    assert theme.APP_NAME == "NiceMill"
     assert theme.TAGLINE == "ナイスプレーを、全員ぶん。"
 
 
@@ -52,7 +52,7 @@ def test_the_brand_files_exist_and_need_no_web_font():
     for name in (theme.WORDMARK, theme.WORDMARK_ONDARK, theme.MARK, theme.MARK_MONO,
                  "nicemiru_wordmark_mono.svg"):
         svg = (BRAND / name).read_text(encoding="utf-8")
-        assert svg.startswith("<svg") and 'aria-label="ナイスミル"' in svg, name
+        assert svg.startswith("<svg") and 'aria-label="NiceMill"' in svg, name
         assert "<text" not in svg and "font-family" not in svg, name     # letters as outlines
         assert not re.search(r"https?:|href", svg.replace("http://www.w3.org/2000/svg", "")), name
     for name in (theme.WORDMARK, theme.WORDMARK_ONDARK):
@@ -91,7 +91,7 @@ def test_the_signed_out_screens_show_the_name():
 def test_the_tab_titles_carry_the_name():
     from pfb_app.ui.wizard import notify
     assert notify.APP == theme.APP_NAME
-    assert notify.home_title([]) == "ナイスミル"
+    assert notify.home_title([]) == "NiceMill"
 
 
 def test_ops_mail_footer_uses_the_name():
@@ -101,8 +101,9 @@ def test_ops_mail_footer_uses_the_name():
 
 def test_the_pdfs_carry_the_mono_mark_and_name_in_the_footer():
     from pfb_app.export import pdf
-    assert pdf.BRAND_NAME == theme.APP_NAME
-    assert pdf.BRAND_MARK == BRAND / theme.MARK_MONO and pdf.BRAND_MARK.is_file()
+    # de6b4bf: the PDFs' footer spells the name in the alphabet, with its own mark
+    assert pdf.BRAND_NAME == "NiceMill"
+    assert pdf.BRAND_MARK == BRAND / "nicemiru_mark_pdf.svg" and pdf.BRAND_MARK.is_file()
     base = (REPO / "src" / "pfb_app" / "export" / "templates" / "_base.html.j2").read_text("utf-8")
     bottom_left = next(l for l in base.splitlines() if "@bottom-left" in l)
     assert "src(brand_mark)" in bottom_left and "brand_name" in bottom_left
@@ -110,7 +111,7 @@ def test_the_pdfs_carry_the_mono_mark_and_name_in_the_footer():
 
 def test_the_user_guide_uses_the_name():
     guide = (REPO / "docs" / "user_guide.md").read_text(encoding="utf-8")
-    assert guide.startswith("# ナイスミル")
+    assert guide.startswith("# NiceMill")
     assert "フィードバック作成アプリ" not in guide and "緑色" not in guide and "花丸" not in guide
 
 
@@ -129,4 +130,4 @@ def test_every_pdf_page_has_the_name_in_its_footer(env):
     for data in (pdf.render_student_pdf(repo, aid), pdf.render_teacher_pdf(repo, aid)):
         doc = pdfium.PdfDocument(io.BytesIO(data))
         texts = [doc[i].get_textpage().get_text_range() for i in range(len(doc))]
-        assert texts and all("ナイスミル" in t for t in texts)
+        assert texts and all(pdf.BRAND_NAME in t for t in texts)

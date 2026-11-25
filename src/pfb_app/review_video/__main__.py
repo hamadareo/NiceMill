@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repo = service.open_readonly(settings)      # read only: no schema step, no WAL switch
     except FileNotFoundError as e:
-        return _fail(f"{e}（--settings でナイスミルの設定ファイルを渡してください）")
+        return _fail(f"{e}（--settings でNiceMillの設定ファイルを渡してください）")
     try:
         repo.get_submission(a.submission_id)
     except KeyError:

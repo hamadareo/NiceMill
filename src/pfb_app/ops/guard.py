@@ -165,7 +165,7 @@ MARK = {"ok": "[OK]  ", "info": "[--]  ", "warn": "[注意]", "error": "[要対�
 def render_text(status: dict) -> str:
     when = _parse(status["checked_at"])
     shown = when.astimezone().strftime("%Y-%m-%d %H:%M:%S") if when else status["checked_at"]
-    lines = [f"ナイスミルの状態（{shown} に確認）", f"まとめ: {status['summary']}", ""]
+    lines = [f"NiceMillの状態（{shown} に確認）", f"まとめ: {status['summary']}", ""]
     lines += [f"{MARK[i['level']]} {i['text']}" for i in status["items"]]
     return "\n".join(lines) + "\n"
 

@@ -21,6 +21,12 @@ numbers (the page says so).
   enqueue new jobs). `attempts` also grows on yields and requeues, so it is not used. The
   steps stopped now are `retry.open_failures` of each kept group.
 - **retries**: presses of 「もう一度ためす」 on works still kept.
+- **corrections** (「あとから訂正」 works, which have no approvals): the evaluated people whose
+  newest text is ok, each counted once by their correction record (services.corrections):
+  never corrected (版0), a text corrected by hand (an edit), else written again or put back (a
+  regenerate or a revert); and, apart from that, the people who got an error report and those
+  whose report is still open. 「訂正なし」 means nobody corrected it, not that it is right. The
+  approvals of such a work (one switched from approve) are not counted as approvals.
 
 Works waiting to be deleted (`deletion.pending_deletions`) are left out everywhere.
 """
@@ -31,10 +37,12 @@ from statistics import median
 
 from pfb_app.domain.models import JobStatus, Kind, Stage, SubjectStatus
 from pfb_app.pipeline.auto_people import is_evaluated
-from pfb_app.services import deletion, retry, review, short_text
+from pfb_app.services import corrections, deletion, retry, review, short_text
 from pfb_app.storage.db import SIDE_STAGES, Repo
 
 AS_IS, EDITED, REWRITTEN, SHORT, AUTO = "as_is", "edited", "rewritten", "short", "auto"
+LIVE_NONE, LIVE_EDITED, LIVE_REDONE = "live_none", "live_edited", "live_redone"
+LIVE_KINDS = (LIVE_NONE, LIVE_EDITED, LIVE_REDONE)
 KINDS = (AS_IS, EDITED, REWRITTEN, SHORT, AUTO)   # a person's approvals first, then the worker's
 FEW = 20    # below this many approved people the page says the numbers are rough
 RETRY_JOB = "retry_job"   # audit action of 管理用の画面 処理状況's 「再試行」 ({"job_ids": [id]})
@@ -52,6 +60,13 @@ class QualityStats:
     jobs_stopped: int                # analysis steps stopped now (open failures)
     retries: int                     # presses of 「もう一度ためす」 on kept works
     since: str | None                # the oldest kept work's local date (YYYY-MM-DD), None: none
+    live: dict[str, int] = None      # {kind in LIVE_KINDS: people} of 「あとから訂正」 works
+    live_reported: int = 0           # of them, people who got an error report
+    live_open: int = 0               # of those, people whose report is still open
+
+    @property
+    def live_total(self) -> int:
+        return sum((self.live or {}).values())
 
     @property
     def approved_total(self) -> int:
@@ -161,8 +176,11 @@ def measure(repo: Repo) -> QualityStats:
     pending = deletion.pending_deletions(repo)
     assignments = [a for a in repo.list_assignments() if a["id"] not in pending]
     sids: list[int] = []
+    live = dict.fromkeys(LIVE_KINDS, 0)
+    reported = [0, 0]                 # people with a report, people with an open one
     for assignment in assignments:
         video = assignment["kind"] == Kind.video.value
+        live_work = corrections.mode_of(assignment) == corrections.CORRECT_LATER
         for sub in repo.list_submissions(assignment["id"]):
             sid = sub["id"]
             sids.append(sid)
@@ -172,6 +190,9 @@ def measure(repo: Repo) -> QualityStats:
             evaluated = [s for s in repo.list_subjects(sid) if not video or is_evaluated(s)]
             people += len(evaluated)
             for subject in evaluated:
+                if live_work:
+                    _count_live(repo, subject, live, reported)
+                    continue
                 if review.subject_status(repo, subject["id"]) != SubjectStatus.approved:
                     continue
                 run = repo.get_run(subject["approved_run_id"])
@@ -193,7 +214,23 @@ def measure(repo: Repo) -> QualityStats:
                            if not failed_before and job_id not in retried),
         jobs_stopped=stopped,
         retries=retries,
-        since=_time(oldest).astimezone().date().isoformat() if oldest else None)
+        since=_time(oldest).astimezone().date().isoformat() if oldest else None,
+        live=live, live_reported=reported[0], live_open=reported[1])
+
+
+def _count_live(repo: Repo, subject: dict, live: dict[str, int], reported: list[int]) -> None:
+    """One person of a 「あとから訂正」 work, by their correction record (only with a text)."""
+    run = review._latest_pfb(repo, subject)   # noqa: SLF001
+    if run is None or run.status != "ok" or not ((run.output or {}).get("pfb") or "").strip():
+        return
+    rows = corrections.history(repo, subject["id"])
+    kinds = {v.kind for v in rows}
+    live[LIVE_EDITED if "edit" in kinds else LIVE_REDONE if kinds & {"revert", "regenerate"}
+         else LIVE_NONE] += 1
+    if "report" in kinds:
+        reported[0] += 1
+        if corrections.open_report(repo, subject["id"]) is not None:
+            reported[1] += 1
 
 
 def change_marker(repo: Repo) -> tuple:

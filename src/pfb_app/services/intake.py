@@ -59,9 +59,11 @@ def _pdf_text(src: Path, work: Path, settings: Settings) -> str:
 
 def create_assignment_from_form(repo: Repo, title: str, kind: str, task_text: str,
                                 rubric_text: str, rubric_file: Path | None, model_key: str,
-                                require_identity_approval: bool, settings: Settings | None = None
-                                ) -> int:
-    """Create an assignment; a rubric file is converted to text and appended to rubric_text."""
+                                require_identity_approval: bool, settings: Settings | None = None,
+                                review_mode: str | None = None) -> int:
+    """Create an assignment; a rubric file is converted to text and appended to rubric_text.
+    `review_mode` None: a new work's mode (services.corrections.NEW_WORK, 「あとから訂正」)."""
+    from pfb_app.services.corrections import NEW_WORK   # noqa: PLC0415 - corrections imports review
     rubric = rubric_text.strip()
     if rubric_file is not None:
         settings = settings or repo.settings or Settings()
@@ -69,7 +71,7 @@ def create_assignment_from_form(repo: Repo, title: str, kind: str, task_text: st
             extracted = _pdf_text(Path(rubric_file), Path(tmp), settings).strip()
         rubric = "\n\n".join(t for t in (rubric, extracted) if t)
     return repo.create_assignment(title.strip(), Kind(kind), task_text, rubric, model_key,
-                                  require_identity_approval)
+                                  require_identity_approval, review_mode=review_mode or NEW_WORK)
 
 
 def _validate_document(filename: str, data: bytes, settings: Settings) -> None:

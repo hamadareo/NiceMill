@@ -1,4 +1,4 @@
-"""ナイスミル theme (「A コートサイド」): tokens, self-hosted fonts, brand, stepper, chips, stamp."""
+"""NiceMill theme (「A コートサイド」): tokens, self-hosted fonts, brand, stepper, chips, stamp."""
 import re
 from pathlib import Path
 
@@ -99,7 +99,7 @@ def test_fonts_are_vendored_with_their_license():
 
 def test_the_japanese_fonts_cover_the_screens_words():
     from fontTools.ttLib import TTFont
-    words = "ナイスミル承認確かめて解析中あなたの番試合・練習のまとめ一人ずつ「」（）％0123456789"
+    words = "NiceMillヒントホーム承認確かめて解析中あなたの番試合・練習のまとめ一人ずつ「」（）％0123456789"
     for name in ("MPLUS1-Regular.woff2", "MPLUS1-Bold.woff2", "DelaGothicOne-Regular.woff2"):
         cmap = TTFont(UI / "static" / "fonts" / name).getBestCmap()
         missing = [c for c in words if ord(c) not in cmap]
@@ -294,3 +294,13 @@ def test_bar_fills_keep_3_to_1_against_the_track_and_never_use_the_pen():
         assert contrast(EXPECTED_TOKENS[name], track) >= 3, name
     bar_rules = re.findall(r"[^{}]*\.pfb-bar[^{]*\{[^}]*\}", css)
     assert bar_rules and not any("pfb-pen" in r for r in bar_rules)
+
+
+def test_the_page_clears_the_fixed_header_and_captions_keep_their_contrast():
+    css = theme.theme_css()
+    # the top of 「ホームへ」 was hidden under the 60 px header at 2.5rem
+    top = re.search(r'stMainBlockContainer"\] \{ padding-top: ([\d.]+)rem', css)
+    assert top and float(top.group(1)) * 16 >= 64
+    # Streamlit's 60 percent caption opacity gave about 3.9:1 on the paper: full muted ink
+    rule = re.search(r'stMain"\] \[data-testid="stCaptionContainer"\] \{([^}]*)\}', css)
+    assert rule and "opacity: 1" in rule.group(1) and "var(--pfb-muted)" in rule.group(1)

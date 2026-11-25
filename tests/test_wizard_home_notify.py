@@ -212,23 +212,23 @@ def test_tab_title_of_a_work_follows_its_state(env):
     worker_alive(settings)
     ready, _ = review_ready(repo, "練習試合")
     at = ok(app(session={"assignment_id": ready}))
-    assert notice(at)["title"] == "（確認できます）練習試合｜ナイスミル"
+    assert notice(at)["title"] == "（確認できます）練習試合｜NiceMill"
     running = analysing(settings, repo, "紅白戦")
     at = ok(app(session={"assignment_id": running}))
-    assert notice(at)["title"] == "（解析中 42%）紅白戦｜ナイスミル"
+    assert notice(at)["title"] == "（解析中 42%）紅白戦｜NiceMill"
     empty = video_assignment(repo, "まだ空の作業")
     at = ok(app(session={"assignment_id": empty}))
-    assert notice(at)["title"] == "（あなたの番）まだ空の作業｜ナイスミル"
+    assert notice(at)["title"] == "（あなたの番）まだ空の作業｜NiceMill"
     done = complete_work(repo, "決勝")
     at = ok(app(session={"assignment_id": done}))
-    assert notice(at)["title"] == "（完了）決勝｜ナイスミル"
+    assert notice(at)["title"] == "（完了）決勝｜NiceMill"
 
 
 def test_tab_title_on_home_counts_your_turn(env):
     settings, repo = env
     worker_alive(settings)
     at = ok(app())
-    assert notify.APP == "ナイスミル"   # the app's name, as app.py's page_title
+    assert notify.APP == "NiceMill"   # the app's name, as app.py's page_title
     assert notice(at)["title"] == notify.APP
     analysing(settings, repo)
     at = ok(app())
@@ -361,7 +361,7 @@ def test_a_hostile_name_stays_text(env):
     assert "\\<img" in message and "\\`" in message and "\\$" in message
     # on the work's own screen the tab title carries the name as plain data
     at = ok(app(session={"assignment_id": aid}))
-    assert notice(at)["title"] == f"（あなたの番）{HOSTILE}｜ナイスミル"
+    assert notice(at)["title"] == f"（あなたの番）{HOSTILE}｜NiceMill"
     bodies = "\n".join(el.proto.body for el in at.get("html"))
     assert bodies.count("<script") == 1 and "<img" not in bodies
 

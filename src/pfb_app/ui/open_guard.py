@@ -1,8 +1,8 @@
 """The safety rail of open mode (`auth_enabled: false`, docs/accounts.md): the open session
 is served only to a request that arrives directly from a private, tailnet or loopback peer
 without the marks of a public proxy. Everything else meets the normal sign-in gate (and a 401
-at /pfb-upload). Added after a Cloudflare quick tunnel to :8501 kept open mode (everyone an
-administrator) publicly reachable for 20 days (2026-11-13/14).
+at /pfb-upload). It is there so that a public tunnel or proxy in front of the screen port cannot
+make open mode (everyone an administrator) reachable from the internet.
 
 `decide(peer, headers)` is a pure function of the TCP peer and the request headers:
 
@@ -24,7 +24,7 @@ Limits, stated plainly (docs/accounts.md): this decides from what the request it
 A tunnel that connects from the machine itself, keeps `Host` as an internal name and adds no
 header at all (for example `ssh -R` or a bare TCP forwarder) looks exactly like a person on the
 tailnet; the rail cannot see it. What it closes is every HTTP proxy, CDN and tunnel that
-identifies itself, which includes the Cloudflare quick tunnel that was open. A refusal logs
+identifies itself, which includes a Cloudflare quick tunnel. A refusal logs
 only its reason, never an address. The first run of a browser session decides (the page's
 websocket handshake); the upload endpoint decides per request.
 """

@@ -14,7 +14,7 @@ toolbarMode = "minimal"
 # No tracebacks or error texts in the browser (they stay in ui.log): accounts lane review.
 showErrorDetails = "none"
 
-# ナイスミル theme 「A コートサイド」: court navy structure, ball-orange primary action, amber
+# NiceMill theme 「A コートサイド」: court navy structure, ball-orange primary action, amber
 # numbers on navy (tokens in src/pfb_app/ui/wizard/theme.py; the fonts are vendored, SIL OFL).
 [theme]
 base = "light"

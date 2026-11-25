@@ -1,5 +1,5 @@
 """The app is for broad use, not only schools: no school words on any screen, PDF, download
-name, prompt or the user guide (user ruling 2026-10-22).
+name, prompt or the user guide (rule of 2026-10-22).
 
 Renders the home, the drop zone, every wizard step and the 詳細画面 pages for a general work
 and a sports work (plus a document work and a check card), and both PDFs, and asserts none of
@@ -354,7 +354,7 @@ def test_export_page_uses_sports_words_for_a_sports_work(env, works, monkeypatch
 
 def test_review_video_screens_are_neutral(env, tmp_path):
     """The review videos and the review player (cards, bands, the page and its data): the same
-    word rules as every other screen (user ruling 2026-10-22)."""
+    word rules as every other screen (rule of 2026-10-22)."""
     from test_review_video import _numbered, all_screen_text
     from pfb_app.review_video import collect
     settings, repo, sid = _numbered(env)

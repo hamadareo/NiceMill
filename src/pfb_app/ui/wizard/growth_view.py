@@ -28,13 +28,15 @@ from pfb_app.ui.common import flash, get_repo, show_flash
 from pfb_app.ui.wizard import svg, theme
 
 TITLE = "成長の記録"
-GUIDE = "同じ人の、いくつかの作業での記録をまとめて見られます。承認した文章だけを使います。"
-EMPTY = "まだ記録がありません。作業で文章を承認すると、ここで見られます。"
+GUIDE = ("同じ人の、いくつかの作業での記録をまとめて見られます。承認した文章だけを使います"
+         "（「あとから訂正」の作業では、誤りの報告を確認中でない最新の文を使います）。")
+EMPTY = ("まだ記録がありません。作業で文章を承認すると（「あとから訂正」の作業では文ができると）、"
+         "ここで見られます。")
 OPEN = "この人の記録を見る"
 PICK = "見る人"
 SUGGEST_HEAD = "つながりの候補（{n}件）"
 SUGGEST_NOTE = ("同じ人かもしれない人です。同じ人なら「同じ人としてつなぐ」を押してください。"
-                "自動ではつなぎません。" + growth.APPROVED_ONLY)
+                "自動ではつなぎません。" + growth.EITHER_ONLY)
 ACCEPT = "同じ人としてつなぐ"
 DECLINE = "別の人"
 UNDO = "元に戻す"
@@ -46,14 +48,15 @@ GROUPS_NOTE = ("背番号（#5 など）の人は、同じチーム・グルー�
                "同じ人の候補になります。")
 SAVE_GROUPS = "チーム・グループを保存"
 BACK = "記録の一覧へ"
-PERSON_GUIDE = "承認した文章と、その文章のもとになった場面の数だけを使っています。"
+PERSON_GUIDE = ("承認した文章（「あとから訂正」の作業では、AIが作成した最新の文。訂正した人は訂正した文）と、"
+                "その文章のもとになった場面の数だけを使っています。")
 CHART_NOTE = "数字は回数です。色が濃いほど多く記録されています。"
 WORKS_HEAD = "作業ごとの記録"
 SUGGESTED = "候補からつなぎました"
 UNLINK = "この作業を外す"
 LINK_HEAD = "ほかの作業の人をつなぐ"
 LINK_NOTE = ("同じ人なのに候補に出ないとき（名前のない人など）は、ここでつなぎます。"
-             + growth.APPROVED_ONLY)
+             + growth.EITHER_ONLY)
 LINK_PICK = "つなぐ人"
 LINK = "つなぐ"
 LINK_NOBODY = "つなげる人がいません。"
@@ -69,7 +72,8 @@ HELP = [
     "同じ人なら「同じ人としてつなぐ」、違うときは「別の人」を押します。自動ではつなぎません。",
     "背番号の人（#5 など）は、「作業のチーム・グループ」に同じ名前を入れた作業どうしでだけ候補になります。",
     "「参加者1」のような名前の人は候補に出ません。記録の画面の「ほかの作業の人をつなぐ」でつなぎます。",
-    "数と文章は、承認した文章だけから出します。まちがえてつないだときは「この作業を外す」で外せます。",
+    "数と文章は、承認した文章（「あとから訂正」の作業では、誤りの報告を確認中でない最新の文）だけから出します。"
+    "まちがえてつないだときは「この作業を外す」で外せます。",
     "PDFの「成長のまとめ」のページは、「PDFを受け取る」の画面で入れるかどうかを選べます（はじめは入れません）。",
 ]
 CSS = """<style>
@@ -261,8 +265,11 @@ def _work(repo: Repo, rec: record.Record, e: record.Entry) -> None:
         parts.append(f'<p class="pfb-growth-work__points">'
                      f'{escape(points or "観点ごとの場面は記録されていません。")}</p>')
         parts += [f'<p class="pfb-growth-quote">「{escape(q)}」</p>' for q in e.quotes[:2]]
+        if e.live:
+            parts.append(f'<p class="pfb-growth-why">{escape("AIが作成した文・確認状況：" + e.live_label)}</p>')
     else:
-        parts.append(f'<p class="pfb-growth-why">{escape(record.NOT_APPROVED)}</p>')
+        why = record.NOT_COUNTED_LIVE if e.live else record.NOT_APPROVED
+        parts.append(f'<p class="pfb-growth-why">{escape(why)}</p>')
     if e.how == "suggested":
         parts.append(f'<p class="pfb-growth-why">{escape(SUGGESTED)}</p>')
     st.html(f'<div class="pfb-growth-work">{"".join(parts)}</div>')
@@ -284,7 +291,7 @@ def _manual(repo: Repo, rec: record.Record, everyone: list[growth.Member]) -> No
     st.html(f'<h3 class="pfb-subhead">{escape(LINK_HEAD)}</h3>'
             f'<p class="pfb-growth-why">{escape(LINK_NOTE)}</p>')
     if rec.person_id is None and not any(e.approved for e in rec.entries):
-        st.caption(growth.APPROVED_ONLY)
+        st.caption(growth.LIVE_ONLY if rec.live else growth.APPROVED_ONLY)
         st.button(LINK, key="pfb_growth_link", type="primary", disabled=True)
         return
     choices = {m.subject_id: _who(m) for m in everyone

@@ -13,7 +13,7 @@ export.explainer_video.Encoder). Nothing is generated or repainted by a model.
     | 試合時間 12:30 · パス                                      (solid band) |
     | AIの記録　<what, as generated>                                          |
     | 評価のポイント　<why, as generated>                                      |
-    | AIの下書きです。評価する人が確認してから渡します。                          |
+    | AIが作成した文です。違っていれば、あとから直せます。                        |
     +-----------------------------------------------------------------------+
 
 A moment the preliminary identity check flagged (Moment.suspect) is drawn with an orange box
@@ -163,7 +163,7 @@ def intro_card(pkg: Package, person: Person, scenes: int, suspects: int) -> np.n
     y = 34
     d.text((PAD * 2, y), person.shown(), font=ev.font(ev.NAME, True), fill=ev.INK)
     y += 80
-    small = [f"ナイスミル上の名前：{person.name}"
+    small = [f"NiceMill上の名前：{person.name}"
              + (f"　追跡ID：{person.internal}" if person.internal else "")]
     y = ev._text(d, (PAD * 2, y), small, ev.font(ev.SMALL), ev.MUTED, gap=6)
     if person.label_note:

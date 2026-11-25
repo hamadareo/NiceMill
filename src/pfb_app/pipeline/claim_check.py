@@ -4,7 +4,8 @@ sentence was not made from, and weaken the sentence when the cues do not carry i
 Pure functions, no model and no database. Two independent cues are read by the caller:
 
 * `Cues`: numbers measured on the frames around the moment (pose: is a wrist above the head;
-  ball detections near the person). `scripts/claims_cues.py` measures them (engine venv).
+  ball detections near the person). An external pose tool measures them in the engine's
+  environment (not included: it depends on AGPL-3.0 ultralytics).
 * `Votes`: the answers of a second, separate question to the local vision model, asked about the
   evidence frames only (`ask_votes`): one question about the claimed action and one about "only
   something else". Each answer is はい / いいえ / 分からない.

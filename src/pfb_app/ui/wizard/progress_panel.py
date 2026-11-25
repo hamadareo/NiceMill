@@ -5,7 +5,7 @@ From the tick's own view (its snapshot and its progress; nothing is read again):
   and the note on how that time is guessed; the shown percentage never goes back (`hold`),
   except once when a redo starts;
 - the stages in order, each with its chip, the active one with its own bar and note, and the
-  review line 「確認と承認」 (承認 n / 全 m) last;
+  review line 「確認と承認」 (承認 n / 全 m; 「あとから訂正」: 「文を読む・直す」) last;
 - a compact bar per group when the work has several groups, else per camera when its one
   group has several cameras;
 - the note that the worker seems to have stopped, when work waits with nobody to do it.
@@ -20,8 +20,7 @@ import streamlit as st
 from pfb_app.config import Settings
 from pfb_app.services import eta
 from pfb_app.ui.wizard import bars, live, theme
-from pfb_app.ui.wizard.analysis import (MOVING, QUEUED, REVIEW_NAME, RUNNING, Analysis,
-                                        hold)
+from pfb_app.ui.wizard.analysis import MOVING, QUEUED, RUNNING, Analysis, hold
 from pfb_app.ui.wizard.progress import View, WorkProgress, camera_label
 
 HOLD = "_pfb_hold_"   # + assignment id: (the fraction shown, whether it was a redo)
@@ -37,7 +36,7 @@ def stage_rows(a: Analysis) -> list[bars.StageRow]:
                           theme.L(s.note if s.known else (s.note or MOVING)))
             for s in a.stages]
     r = a.review
-    rows.append(bars.StageRow(theme.L(REVIEW_NAME), r.status, r.percent, True, theme.L(r.note)))
+    rows.append(bars.StageRow(theme.L(r.name), r.status, r.percent, True, theme.L(r.note)))
     return rows
 
 
@@ -71,7 +70,7 @@ def status_of(a: Analysis) -> str:
 
 def _caption(a: Analysis) -> str:
     current = a.current
-    return theme.L(current.name if current is not None else REVIEW_NAME)
+    return theme.L(current.name if current is not None else a.review.name)
 
 
 def _compact(view: View) -> str:

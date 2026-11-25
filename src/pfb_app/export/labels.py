@@ -162,33 +162,62 @@ def camera_word(camera: str | None) -> str:
 
 
 # the evaluator PDF's status chips: always words, never a colour alone
-APPROVED, AUTO, SHORT, LEFT_OUT = "承認", "自動で承認", "短い文", "入っていない"
+APPROVED, AUTO, SHORT, LEFT_OUT = "承認", "自動承認（機械チェック済み・人は未確認）", "短い文", "入っていない"
 WHY_NOT = {SubjectStatus.review: "確認待ち", SubjectStatus.insufficient: "場面が少ない",
            SubjectStatus.processing: "解析中", SubjectStatus.waiting_gpu: "解析の順番待ち",
            SubjectStatus.pending: "解析待ち", SubjectStatus.failed: "止まっています"}
+DRAFT = "未承認（下書き）"
+DRAFT_BANNER = "未承認（下書き）。評価する人はまだ確認していません。"
+DRAFT_NOTE = ("このPDFは「下書きも出す」設定で作りました。「未承認（下書き）」の文は、評価する人が確認して"
+              "いません。承認した出力として使わないでください。")
+CREDIT_MISSING = "出典：作業の設定で未入力"
+AI_LINE = "AIが作成した文です。誤りがあれば訂正できます。"
+LIVE_BANNER = "AIが作成した文。人の確認を経ていない場合があります。誤りがあれば訂正できます（訂正の履歴あり）。"
+CONTACT_PREFIX = "訂正のご連絡先："
+CONTACT_MISSING = CONTACT_PREFIX + "団体の設定で連絡先を入力"   # 団体の設定 (PDFを受け取る)
 SHORT_NOTE = "映っている場面が少なかったため、短い文にしています。"
 RETRACK_NOTE = "人の追跡をやり直しているため、写真と図は入れていません。"
 
 
-def footer_line(work: dict | None, video: bool, auto: bool = False) -> str:
+def footer_line(work: dict | None, video: bool, auto: bool = False, draft: bool = False) -> str:
     """A handout's footer; `auto`: the text was approved by the worker, not checked by a
     person, and the footer says so."""
+    if draft:
+        return draft_footer_line(work, video)
     source = "動画" if video else "書いたもの"
-    if auto:
-        return f"このフィードバックは{source}をもとに自動で作り、そのまま渡しています。"
+    if auto:   # fixed wording: no setting removes it
+        return (f"このフィードバックは{source}をもとに自動で作りました。機械チェックは通りましたが、"
+                f"{words_for(work).giver}は確かめていません（機械チェック済み・人は未確認）。")
     return f"このフィードバックは{source}をもとに作り、{words_for(work).giver}が確かめたものです。"
 
 
-def evaluator_footer_line(work: dict | None, video: bool, autos: list[bool]) -> str:
+def live_footer(version: int) -> str:
+    """A 「あとから訂正」 page's footer: when it was made and which version of the text it carries
+    (the stamp is the PDF's, set by export.pdf._stamp)."""
+    return f"文の版 {version}"
+
+
+def draft_footer_line(work: dict | None, video: bool) -> str:
+    """The footer of a draft page: never the 「確かめたもの」 line."""
+    return DRAFT_BANNER + "承認した出力ではありません。"
+
+
+def evaluator_footer_line(work: dict | None, video: bool, autos: list[bool], drafts: int = 0,
+                          live: bool = False) -> str:
     """The evaluator PDF's cover footer, from the approved sheets' `auto` flags: a person's
     check only when every sheet was checked, the handouts' auto line when none was, else both
     counted (each person's page then carries that sheet's own footer_line)."""
+    if live:
+        return "AIが作成した文。人の確認を経ていない場合があります。各ページの下に、その文の版を書いています。"
+    if drafts:   # approved and draft pages are mixed: each person's page has its own footer
+        n_ok = len(autos)
+        return f"未承認（下書き）{drafts}人・承認済み{n_ok}人。各ページの下にそのページの状態を書いています。"
     n_auto = sum(1 for a in autos if a)
     if n_auto == 0 or n_auto == len(autos):
         return footer_line(work, video, auto=n_auto > 0)
     source = "動画" if video else "書いたもの"
-    return (f"このフィードバックは{source}をもとに作りました。{n_auto}人の分は確かめずに自動で承認し、"
-            f"ほかは{words_for(work).giver}が確かめています。")
+    return (f"このフィードバックは{source}をもとに作りました。{n_auto}人の分は機械チェック済み・人は未確認の"
+            f"自動承認で、ほかは{words_for(work).giver}が確かめています。")
 
 
 def self_words(text: str, work: dict | None) -> str:

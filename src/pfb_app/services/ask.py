@@ -81,6 +81,7 @@ RECORD_NOTE = ("数えているのは、「よかった場面」として記録�
 SPEECH_NOTE = "話し声の記録には、誰が話したかがありません。"
 UNPLACED_NOTE = "時間がわからない場面{n}件は、時間の範囲に入れていません。"
 WAITING_NOTE = "承認前の人の記録を含みます。"
+LIVE_WAITING_NOTE = "誤りの報告を確認中の人の記録を含みます。"   # 「あとから訂正」 works
 PLAIN_NOTE = "記録の数を、そのまま並べています。"
 READ_BY_WORDS_NOTE = "聞き方を読み取れなかったため、言葉の手がかりで調べました。調べた内容を確かめてください。"
 
@@ -451,6 +452,9 @@ def _feedback(scope: Scope, record: Record) -> Facts:
     p = scope.person
     if p is None:
         return Facts("message", message=NEED_PERSON)
+    if (not p.approved or not p.text) and record.board.live:   # 「あとから訂正」: never 承認
+        return Facts("message", message=f"{call(p.name)}の文章は、{p.status or '文がまだありません'}"
+                                         "のため、見せられません。")
     if not p.approved or not p.text:
         return Facts("message", message=f"{call(p.name)}の文章は、まだ承認前のため、見せられません。")
     several = len(record.board.cameras) > 1
@@ -483,7 +487,7 @@ def _scenes(plan: Plan, scope: Scope, record: Record) -> Facts:
     notes = [UNPLACED_NOTE.format(n=unplaced)] if unplaced else []
     total = len(picked)
     if any(not m.approved for _, m in picked):
-        notes.append(WAITING_NOTE)
+        notes.append(LIVE_WAITING_NOTE if board.live else WAITING_NOTE)
     if total == 0:
         tail = "（言い方が違う場面は、見つからないことがあります）" if scope.keywords else ""
         return Facts("message", message=f"{describe(scope)}は、記録に見つかりませんでした（0回）。{tail}",

@@ -136,6 +136,21 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+-- 「あとから訂正」の作業 (services.corrections): a text's corrections, appended only
+CREATE TABLE IF NOT EXISTS text_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    run_id INTEGER,
+    prev_run_id INTEGER,
+    text TEXT,
+    prev_text TEXT,
+    reason TEXT,
+    note TEXT,
+    actor TEXT,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -215,6 +230,35 @@ CREATE TABLE IF NOT EXISTS explainer_jobs (
     heartbeat_at TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_explainer_jobs_key ON explainer_jobs (submission_id, kind, subject_id);
+-- 自動承認 (2026-11-19, services.autoapprove): one row per text the app approved by its machine
+-- checks without a person's look: when, under which policy (its version and thresholds), and the
+-- result of every check. status: active (the approval stands), revoked (put back to waiting for
+-- a person), confirmed (a person approved afterwards), replaced (a newer text was approved automatically). Added only: no existing table changes.
+CREATE TABLE IF NOT EXISTS auto_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    run_id INTEGER NOT NULL REFERENCES stage_runs(id) ON DELETE CASCADE,
+    approved_at TEXT NOT NULL,
+    policy_version TEXT NOT NULL,
+    policy TEXT NOT NULL,
+    checks TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked', 'confirmed', 'replaced')),
+    ended_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_auto_approvals_subject ON auto_approvals (subject_id, run_id);
+-- 動作の再確認 (2026-11-19, pipeline.claim_scan): the machine re-check of the action words of one recorded
+-- scene (a behavior run's event): the verdict of pipeline.claim_check (shoot / dribble / pass / defend,
+-- from a pose cue and two questions to a local vision model) or of pipeline.motion_check (run / walk /
+-- move, from the tracks). One row per scene and method; the newest row counts. Added only.
+CREATE TABLE IF NOT EXISTS claim_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL REFERENCES stage_runs(id) ON DELETE CASCADE,
+    event_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_claim_checks_run ON claim_checks (run_id, event_id);
 """
 
 _ACTIVE = (JobStatus.queued.value, JobStatus.running.value, JobStatus.waiting_gpu.value)
@@ -241,6 +285,16 @@ SERVED_TIMED = ("contribution", "pfb")   # stage_durations_all prefers their ser
 _GROWTH_OK = ("s.approval_status = 'approved' AND s.approved_run_id = (SELECT r.id FROM"
               " stage_runs r WHERE r.submission_id = s.submission_id AND r.stage = 'pfb'"
               " AND r.subject_id = s.id ORDER BY r.version DESC LIMIT 1)")
+# 「あとから訂正」 works: the newest feedback run is ok with a text, and the person's newest
+# correction row is not an open report (services.corrections.usable_run, in one query)
+_LIVE_OK = ("COALESCE((SELECT r.status = 'ok' AND TRIM(COALESCE(json_extract(r.output, '$.pfb'),"
+            " '')) <> '' FROM stage_runs r WHERE r.submission_id = s.submission_id"
+            " AND r.stage = 'pfb' AND r.subject_id = s.id ORDER BY r.version DESC LIMIT 1), 0)"
+            " AND COALESCE((SELECT v.kind FROM text_versions v WHERE v.subject_id = s.id"
+            " ORDER BY v.id DESC LIMIT 1), '') <> 'report'")
+# the text the growth record uses: approved, or in a correct_later work the newest one
+_GROWTH_USABLE = (f"(CASE WHEN a.review_mode = 'correct_later' THEN ({_LIVE_OK})"
+                  f" ELSE ({_GROWTH_OK}) END)")
 _GROWTH_EVALUATED = ("(a.kind <> 'video' OR (s.participant_id IS NOT NULL"
                      " AND COALESCE(s.excluded, 0) = 0))")
 
@@ -273,6 +327,7 @@ MIGRATIONS = (
     ("subjects", "excluded", "INTEGER DEFAULT 0"),   # 1: not evaluated (この人は評価しない)
     ("jobs", "progress", "REAL"),          # a running job's own progress, 0..1 (NULL: unknown)
     ("jobs", "progress_note", "TEXT"),     # its plain short note, e.g. 「12 / 40 区間」
+    ("assignments", "review_mode", "TEXT DEFAULT 'approve'"),   # approve | correct_later
     ("assignments", "auto_approve", "INTEGER DEFAULT 0"),   # 確認せずに自動で承認する (off)
     ("subjects", "approved_auto", "INTEGER DEFAULT 0"),     # 1: approved by the worker
     # the activity-type profile (domain/profiles.py); NULL (works from before it): read as
@@ -296,14 +351,22 @@ MIGRATIONS = (
     ("audit_log", "org_id", "INTEGER NOT NULL DEFAULT 1"),
     ("audit_log", "actor_id", "INTEGER"),
     ("audit_log", "actor", "TEXT"),
+    # 出典: the footage / material sources the work's PDFs print (one per line; NULL: none set)
+    ("assignments", "credits", "TEXT"),
 )
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
     existing = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='assignments'").fetchone()
-    conn.executescript(SCHEMA)
+    had_auto = conn.execute(   # both tables added in 2026-11 (auto_approvals, claim_checks)
+        "SELECT 1 WHERE (SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+        " AND name IN ('auto_approvals', 'claim_checks')) = 2").fetchone()
     copied = existing is None   # a new database needs no copy
+    if existing is not None and had_auto is None:   # a new table on an existing database
+        copied = True
+        _pre_migration_copy(conn)
+    conn.executescript(SCHEMA)
     for table, column, decl in MIGRATIONS:
         if column in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
             continue
@@ -403,14 +466,15 @@ class Repo:
     def create_assignment(self, title: str, kind: Kind, task_text: str, rubric_text: str,
                           model_key: str, require_identity_approval: bool,
                           domain: str = "school", sport: str | None = None,
-                          profile: str | None = None) -> int:
-        """`profile` None: the domain's default (profiles.of_work reads it so)."""
+                          profile: str | None = None, review_mode: str | None = None) -> int:
+        """`profile` None: the domain's default (profiles.of_work reads it so). `review_mode`
+        None: the column's default (approve); the screens pass services.corrections.NEW_WORK."""
         cur = self.conn.execute(
             "INSERT INTO assignments (title, kind, task_text, rubric_text, model_key,"
-            " require_identity_approval, created_at, domain, sport, profile)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " require_identity_approval, created_at, domain, sport, profile, review_mode)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,COALESCE(?, 'approve'))",
             (title, Kind(kind).value, task_text, rubric_text, model_key,
-             int(require_identity_approval), _now(), domain, sport, profile))
+             int(require_identity_approval), _now(), domain, sport, profile, review_mode))
         return cur.lastrowid
 
     @staticmethod
@@ -420,6 +484,8 @@ class Repo:
         d["domain"] = d.get("domain") or "school"
         d.setdefault("sport", None)
         d["auto_approve"] = bool(d.get("auto_approve") or 0)
+        d["review_mode"] = d.get("review_mode") or "approve"
+        d.setdefault("credits", None)
         d["profile"] = profiles.of_work(d)
         d.setdefault("growth_group", None)
         for key in ("consent", "consent_note", "media_removed_at"):
@@ -469,6 +535,17 @@ class Repo:
             self.conn.execute("UPDATE assignments SET task_text=?, rubric_text=? WHERE id=?",
                               (task_text, rubric_text, id))
         return True
+
+    def set_review_mode(self, id: int, mode: str) -> None:
+        """approve (the default) or correct_later (services.corrections)."""
+        self.get_assignment(id)
+        self.conn.execute("UPDATE assignments SET review_mode=? WHERE id=?", (mode, id))
+
+    def set_credits(self, id: int, credits: str | None) -> None:
+        """The work's 出典 (one source per line; None or blank: none set)."""
+        self.get_assignment(id)
+        text = (credits or "").strip() or None
+        self.conn.execute("UPDATE assignments SET credits=? WHERE id=?", (text, id))
 
     def set_auto_approve(self, id: int, on: bool) -> None:
         """The work option 「確認せずに自動で承認する」 (services.review.auto_approve)."""
@@ -722,11 +799,72 @@ class Repo:
             self.conn.execute(
                 "UPDATE subjects SET approval_status='none', approved_run_id=NULL,"
                 " approved_at=NULL, approved_auto=0 WHERE id=?", (subject_id,))
+            self._end_auto_approvals(subject_id, "revoked")
         else:
             self.conn.execute(
                 "UPDATE subjects SET approval_status='approved', approved_run_id=?,"
                 " approved_at=?, approved_auto=? WHERE id=?",
                 (run_id, _now(), int(auto), subject_id))
+            if not auto:   # a person's approval after an automatic one: the person's stands
+                self._end_auto_approvals(subject_id, "confirmed")
+
+    # --- 自動承認 (services.autoapprove) ---
+
+    def _end_auto_approvals(self, subject_id: int, status: str) -> None:
+        self.conn.execute("UPDATE auto_approvals SET status=?, ended_at=? WHERE subject_id=?"
+                          " AND status='active'", (status, _now(), subject_id))
+
+    def add_auto_approval(self, subject_id: int, run_id: int, policy_version: str,
+                          policy: dict, checks: list[dict]) -> int:
+        """Keep what an automatic approval stood on (call it in the approving transaction)."""
+        self._end_auto_approvals(subject_id, "replaced")
+        cur = self.conn.execute(
+            "INSERT INTO auto_approvals (subject_id, run_id, approved_at, policy_version,"
+            " policy, checks) VALUES (?,?,?,?,?,?)",
+            (subject_id, run_id, _now(), policy_version, _json(policy), _json(checks)))
+        return cur.lastrowid
+
+    def active_auto_approval(self, subject_id: int, run_id: int | None) -> dict | None:
+        """The record of the standing automatic approval of this very text, else None."""
+        row = self.conn.execute(
+            "SELECT * FROM auto_approvals WHERE subject_id=? AND run_id=? AND status='active'"
+            " ORDER BY id DESC LIMIT 1", (subject_id, run_id)).fetchone()
+        return self._auto_row(row) if row else None
+
+    def auto_approval_undone(self, subject_id: int, run_id: int) -> bool:
+        """True when an automatic approval of this very text was put back by a person: it is
+        never approved automatically again."""
+        return self.conn.execute(
+            "SELECT 1 FROM auto_approvals WHERE subject_id=? AND run_id=? AND status='revoked'",
+            (subject_id, run_id)).fetchone() is not None
+
+    def list_auto_approvals(self, subject_id: int) -> list[dict]:
+        rows = self.conn.execute("SELECT * FROM auto_approvals WHERE subject_id=? ORDER BY id",
+                                 (subject_id,)).fetchall()
+        return [self._auto_row(r) for r in rows]
+
+    # --- 動作の再確認 (pipeline.claim_scan) ---
+
+    def put_claim_check(self, run_id: int, event_id: str, method: str, verdict: dict) -> None:
+        """Keep the re-check of one scene's action (a behavior run's event)."""
+        self.conn.execute(
+            "INSERT INTO claim_checks (run_id, event_id, method, verdict, created_at)"
+            " VALUES (?,?,?,?,?)", (run_id, event_id, method, _json(verdict), _now()))
+
+    def claim_checks(self, run_id: int) -> dict[str, dict[str, dict]]:
+        """{event id: {method: verdict}} of a behavior run, the newest row of each method."""
+        out: dict[str, dict[str, dict]] = {}
+        for r in self.conn.execute("SELECT event_id, method, verdict FROM claim_checks"
+                                   " WHERE run_id=? ORDER BY id", (run_id,)):
+            out.setdefault(r["event_id"], {})[r["method"]] = json.loads(r["verdict"])
+        return out
+
+    @staticmethod
+    def _auto_row(row: sqlite3.Row) -> dict:
+        d = dict(row)
+        d["policy"] = json.loads(d["policy"])
+        d["checks"] = json.loads(d["checks"])
+        return d
 
     # --- stage runs ---
 
@@ -1114,7 +1252,8 @@ class Repo:
     def growth_member_rows(self, subject_ids=None) -> list[dict]:
         """Every person of every work (or only `subject_ids`) in one query, with their work,
         group, record and whether their newest feedback text is the approved one (`approved`;
-        staleness is left to review.subject_status)."""
+        staleness is left to review.subject_status; in a 「あとから訂正」 work (`live`): the newest
+        text is ok and not reported wrong)."""
         where, args = "", ()
         if subject_ids is not None:
             ids = sorted(set(subject_ids))
@@ -1123,7 +1262,8 @@ class Repo:
             where, args = f" WHERE s.id IN ({_in(ids)})", tuple(ids)
         rows = self.conn.execute(
             "SELECT s.id AS subject_id, s.submission_id, s.participant_id, s.display_name,"
-            f" s.excluded, {_GROWTH_OK} AS approved,"
+            f" s.excluded, {_GROWTH_USABLE} AS approved,"
+            " COALESCE(a.review_mode, '') = 'correct_later' AS live,"
             " b.label AS group_label, b.meta, a.id AS assignment_id, a.title, a.created_at,"
             " a.kind, a.domain, a.sport, a.profile, a.growth_group,"
             " (SELECT COUNT(*) FROM submissions b2 WHERE b2.assignment_id = a.id) AS groups,"
@@ -1135,6 +1275,7 @@ class Repo:
             d = dict(r)
             d["meta"] = json.loads(d["meta"] or "{}")
             d["approved"] = bool(d["approved"])
+            d["live"] = bool(d["live"])
             d["excluded"] = bool(d["excluded"] or 0)
             out.append(d)
         return out
@@ -1142,7 +1283,8 @@ class Repo:
     def growth_handout_count(self, assignment_id: int, subject_ids=None) -> int:
         """People of this work with an approved text (only `subject_ids` when given: the
         people the PDF holds) whose record has approved texts in two or more works up to and
-        including this work (date, then id), in one query."""
+        including this work (date, then id), in one query (「あとから訂正」 works: the newest
+        text not reported wrong, as growth_member_rows)."""
         only, extra = "", ()
         if subject_ids is not None:
             ids = sorted(set(subject_ids))
@@ -1152,7 +1294,7 @@ class Repo:
         row = self.conn.execute(
             "WITH ok AS (SELECT s.id, a.id AS aid, a.created_at FROM subjects s"
             " JOIN submissions b ON s.submission_id = b.id JOIN assignments a"
-            f" ON b.assignment_id = a.id WHERE {_GROWTH_OK} AND {_GROWTH_EVALUATED}),"
+            f" ON b.assignment_id = a.id WHERE {_GROWTH_USABLE} AND {_GROWTH_EVALUATED}),"
             " w AS (SELECT id, COALESCE(created_at, '') AS at FROM assignments WHERE id = ?),"
             " here AS (SELECT DISTINCT l.person_id FROM growth_links l JOIN ok"
             f" ON ok.id = l.subject_id WHERE ok.aid = ?{only})"

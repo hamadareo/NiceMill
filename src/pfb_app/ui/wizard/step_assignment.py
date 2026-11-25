@@ -9,6 +9,11 @@ fixed (`render_new(..., docs)`, with the optional roster CSV for the name guessi
 registered right after the work is created; dropped videos go to the content check instead.
 The old video fields of this form (the identity checkbox) are now on the check card or in
 管理用の画面.
+
+「作業の設定」 (an existing work, `_settings`): 文の出し方 — 「あとから訂正」 (correct_later:
+the newest texts go out at once, corrections are kept as versions; a new work's default) or
+「承認して出す」 (approve: only approved texts) — and the work's 出典 (credits), one per line,
+printed on its PDFs. Both are saved at once and can be changed at any time.
 """
 import logging
 from html import escape
@@ -16,11 +21,13 @@ from html import escape
 import streamlit as st
 
 from pfb_app.config import Settings
+from pfb_app.services import corrections
 from pfb_app.services.assignments import BusyError, update_assignment
 from pfb_app.services.intake import register_documents
 from pfb_app.storage.db import Repo
+from pfb_app.ui import access
 from pfb_app.ui.common import (MODEL_LABELS, UNEXPECTED, IntakeFailed,
-                               create_assignment_from_inputs, flash, read_roster,
+                               create_assignment_from_inputs, flash, get_repo, read_roster,
                                show_intake_error, upload_note)
 from pfb_app.ui.wizard import router, theme
 from pfb_app.ui.wizard.progress import DOCUMENT_STEPS
@@ -32,10 +39,26 @@ LOCKED = ("解析が始まったため、活動の内容と評価の観点は変
           "変えるときは、ホームから新しく始めてください。")
 KINDS = {"video": "動画（グループ活動や練習などの録画）", "document": "書類（レポートや企画書など）"}
 
+SETTINGS = "作業の設定"
+MODE = "文の出し方"
+MODE_NOTES = {
+    corrections.CORRECT_LATER: ("人の確認を待たずに、AIが作った文をそのままPDFにできます。違っていたところは"
+                                "「文を読む・直す」であとから直せます（直した記録が残り、PDFには文の版と確認状況が入ります）。"),
+    corrections.APPROVE: "確かめて承認した人の文だけをPDFに入れます。",
+}
+MODE_SAVED = "文の出し方を「{mode}」にしました。"
+CREDITS = "出典（動画や資料の出どころ・ライセンス。1行に1つ）"
+CREDITS_NOTE = "PDFの終わりに小さく入ります。空のときは「出典：作業の設定で未入力」と入ります。"
+CREDITS_SAVE = "出典を保存する"
+CREDITS_SAVED = "出典を保存しました。次に受け取るPDFから入ります。"
+CREDITS_CLEARED = "出典を空にしました。"
+CREDITS_MAX = 600
+
 HELP = [
     "活動の名前と、評価する内容（参加者に伝えた問いや指示）を書きます。評価の観点があれば入れます。",
     "フィードバックは、ここに書いた活動の内容と評価の観点に沿って作られます。",
     "解析が始まった後は活動の内容を変えられません。変えるときは新しく始めてください。",
+    "「作業の設定」で、文の出し方（あとから訂正／承認して出す）と、PDFに入れる出典を決められます。いつでも変えられます。",
     "うまくいかないとき：評価の観点のファイルが読めないときは、その内容を「評価の観点」の欄に"
     "書き写してください。",
 ]
@@ -147,8 +170,48 @@ def _save(repo: Repo, a: dict, task: str, rubric: str) -> bool:
     return True
 
 
+def _set_mode(assignment_id: int, key: str) -> None:
+    """The radio's on_change: store 文の出し方 (services.corrections.set_mode, audited)."""
+    if access.refuse_unless_edit():   # a callback runs before the gate
+        return
+    mode = st.session_state.get(key)
+    repo = get_repo()
+    try:
+        corrections.set_mode(repo, assignment_id, mode)
+    except corrections.CorrectionError as e:
+        flash(str(e), "error")
+        return
+    finally:
+        repo.conn.close()
+    flash(MODE_SAVED.format(mode=corrections.MODE_WORDS[mode]))
+
+
+def _settings(screen: router.Screen, a: dict) -> None:
+    """「作業の設定」: 文の出し方 and the work's 出典, each saved by its own press."""
+    st.html(f'<h3 class="pfb-subhead">{escape(SETTINGS)}</h3>')
+    key = f"pfb_review_mode_{a['id']}"
+    mode = corrections.mode_of(a)
+    st.session_state[key] = mode         # always the stored one (another tab may change it)
+    modes = [corrections.CORRECT_LATER, corrections.APPROVE]
+    st.radio(theme.L(MODE), modes, format_func=corrections.MODE_WORDS.get, horizontal=True,
+             key=key, on_change=_set_mode, args=(a["id"], key), disabled=screen.pending)
+    st.caption(theme.L(MODE_NOTES[mode]))
+    credits = st.text_area(theme.L(CREDITS), a.get("credits") or "", max_chars=CREDITS_MAX,
+                           key=f"pfb_credits_{a['id']}", height=90,
+                           placeholder="例：映像 〇〇（CC BY 4.0）")
+    st.caption(theme.L(CREDITS_NOTE))
+    if st.button(theme.L(CREDITS_SAVE), key=f"pfb_credits_save_{a['id']}",
+                 disabled=screen.pending):
+        if access.refuse_unless_edit():
+            st.rerun()
+        screen.repo.set_credits(a["id"], credits)
+        flash(CREDITS_SAVED if (credits or "").strip() else CREDITS_CLEARED)
+        st.rerun()
+
+
 def render(screen: router.Screen) -> None:
-    """Step 1 of an existing work: editable until analysis starts, then view only."""
+    """Step 1 of an existing work: editable until analysis starts, then view only; below,
+    「作業の設定」 (`_settings`)."""
     repo = screen.repo
     a = repo.get_assignment(screen.progress.assignment_id)
     locked = repo.assignment_has_jobs(a["id"])
@@ -177,4 +240,5 @@ def render(screen: router.Screen) -> None:
                 if _save(repo, a, task, rubric):
                     router.go(None)
                     st.rerun()
+        _settings(screen, a)
     theme.help_expander(HELP)

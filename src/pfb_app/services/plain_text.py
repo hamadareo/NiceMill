@@ -13,7 +13,10 @@ What is stored, and where:
   "plain:<work id>" (`choice` / `choose`).
 
 The approved text is never changed, always stays the coach's version and is what the
-evaluator PDF, the review screen and the growth record read. A person's handout takes the
+evaluator PDF, the review screen and the growth record read. In a 「あとから訂正」 work the text
+a version is made from is the person's newest text unless it is reported wrong
+(services.corrections.usable_run): a correction outdates the reworded text, and the handout
+then carries the corrected text until the version is made again. A person's handout takes the
 reworded text only while it is `ready`: made from the text that is approved now (`outdated`
 otherwise), passed the checks (`fallback`: it never did, so the approved text is used) and not
 switched off for that person. Whatever is not ready falls back to the approved text, so a
@@ -50,6 +53,9 @@ WHY_ORIGINAL = {
     UNAVAILABLE: "承認した文章がないため、元の文を使います",
 }
 NOT_APPROVED = "この人の文章は、承認が変わったため言いかえできません。承認してからやり直してください。"
+# 「あとから訂正」 works: the text it is made from is the newest one unless reported wrong
+NOT_USABLE_LIVE = "この人の文は、まだないか、誤りの報告を確認中のため、言いかえできません。"
+UNAVAILABLE_LIVE = "元の文がないか、誤りの報告を確認中のため、元の文を使います"
 BUSY = "この人の言いかえを作っている途中です。できてから直してください。"
 NOTHING = "いまは頼めませんでした。少し待ってから、もう一度押してください。"
 UNKNOWN_LEVEL = "読み手の選びかたが正しくありません。"
@@ -248,7 +254,9 @@ def save_edit(repo: Repo, subject_id: int, level: str, text: str) -> StageRun:
         subject = repo.get_subject(subject_id)
         info = pipeline_plain.context_for(repo, subject)
         if info is None:
-            raise Refused(NOT_APPROVED)
+            from pfb_app.services import corrections   # noqa: PLC0415
+            live = corrections.mode_of(corrections._work_of(repo, subject)) == corrections.CORRECT_LATER  # noqa: SLF001
+            raise Refused(NOT_USABLE_LIVE if live else NOT_APPROVED)
         sid = subject["submission_id"]
         if repo.has_active_job(sid, Stage.plain, level, subject_id):
             raise Refused(BUSY)

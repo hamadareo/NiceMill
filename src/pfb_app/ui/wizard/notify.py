@@ -2,8 +2,8 @@
 
 - The browser tab's title follows the state: on a work 「（確認できます）練習試合」,
   「（解析中 47%）練習試合」, 「（あなたの番）…」, 「（止まっています）…」, 「（完了）…」, each
-  followed by 「｜ナイスミル」; on the home screen 「（あなたの番 2件）ナイスミル」 or
-  「（解析中 47%）ナイスミル」.
+  followed by 「｜NiceMill」; on the home screen 「（あなたの番 2件）NiceMill」 or
+  「（解析中 47%）NiceMill」.
 - An optional soft chime, once, when a work goes from analysing to the coach's turn while
   this tab is open. It is off by default; the toggle 「終わったら音で知らせる」 sits on the home
   screen above the works being analysed. Under prefers-reduced-motion it never sounds.
@@ -35,7 +35,7 @@ from pfb_app.ui.common import get_repo
 from pfb_app.ui.wizard import live, progress_panel
 from pfb_app.ui.wizard.progress import WorkProgress, all_work
 
-APP = "ナイスミル"          # the app's name (theme.APP_NAME; app.py's page_title)
+APP = "NiceMill"          # the app's name (theme.APP_NAME; app.py's page_title)
 KEY = "pfb_notify"                 # the hidden container (CSS: .st-key-pfb_notify)
 SOUND = "_pfb_notify_sound"        # the coach's choice, kept apart from the widget
 SOUND_WIDGET = "pfb_notify_sound"  # the toggle (its state goes when it is not shown)

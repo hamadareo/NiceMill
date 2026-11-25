@@ -27,6 +27,7 @@ The complete table (209 packages of the runtime closure, with versions, licences
 | accelerate | Apache-2.0 | |
 | openpyxl | MIT | |
 | argon2-cffi | MIT | |
+| segno | BSD-3-Clause | QR code of the booklet; checked 2026-11-23: LICENSE of github.com/heuer/segno |
 | av (transitive) | BSD-3-Clause (bundles FFmpeg, LGPL-2.1+) | weak copyleft inside the wheel |
 | certifi (transitive) | MPL-2.0 | weak copyleft (file level) |
 | nvidia-* CUDA wheels (transitive) | NVIDIA proprietary | not redistributed here; installed by the user |
@@ -76,4 +77,4 @@ covered by the repository's licence (Apache-2.0; the licence grants no trademark
 Only public clips: Samsunspor vs. Merkezefendi Belediyesi Denizli Basket (TBF, Wikimedia Commons, CC BY 3.0) and a
 wheelchair basketball video (Splash tv, Wikimedia Commons, CC BY-SA 4.0; derivatives must be shared alike).
 The CC BY-SA 4.0 clip's attribution/ShareAlike obligations apply to any frame or video derived from it.
-No video or frame is included in this repository.
+No video is included in this repository. The frames in `docs/images/` come from the TBF clip (CC BY 3.0); see NOTICE.

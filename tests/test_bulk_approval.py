@@ -1,4 +1,5 @@
-"""Less approval work: 「全員まとめて承認」 on step 5 and the work option 「確認せずに自動で承認する」.
+"""Less approval work: 「全員まとめて承認」 on step 5 and the work option 「機械チェックを通った文を自動承認する」
+(the checks themselves: test_autoapprove.py; here the mechanics run with the approval gates only).
 
 Only synthetic data: invented names and texts, tiny generated images."""
 from pathlib import Path
@@ -22,7 +23,7 @@ from test_wizard_ui_review_pdf import (EVENTS, TEXTS, btn, documents, has_button
                                        save_pfb, shown_student, subject)
 
 BULK = "全員まとめて承認"
-AUTO = "確認せずに自動で承認する"
+AUTO = "機械チェックを通った文を自動承認する"
 
 
 def shown(repo, sid):
@@ -100,6 +101,7 @@ def test_auto_approve_is_off_by_default_and_audited_when_set(env):
     assert repo.latest_audit("set_auto_approve", f"assignment:{aid}")["detail"] == {"on": True}
 
 
+@pytest.mark.usefixtures("only_old_gates")
 def test_auto_approve_takes_a_new_clean_text_only_when_the_option_is_on(env):
     settings, repo = env
     aid = video_assignment(repo)
@@ -171,6 +173,7 @@ def _run_chain(repo, ctx, sid):
         assert repo.get_job(job.id).status == JobStatus.done
 
 
+@pytest.mark.usefixtures("only_old_gates")
 def test_the_worker_approves_a_clean_new_text_when_the_option_is_on(runner_settings, runner_repo,
                                                                     tmp_path):
     settings, repo = runner_settings, runner_repo
@@ -183,6 +186,7 @@ def test_the_worker_approves_a_clean_new_text_when_the_option_is_on(runner_setti
     assert repo.latest_audit("auto_approved", f"subject:{subj}")["detail"] == {"run_id": run.id}
 
 
+@pytest.mark.usefixtures("only_old_gates")
 def test_the_worker_leaves_a_text_to_a_person_while_people_are_not_confirmed(env):
     """The worker path (execute_job) with the identity gate unconfirmed: nothing approved."""
     settings, repo = env
@@ -483,6 +487,7 @@ def test_the_option_can_be_set_on_step_5(env):
     assert next(t for t in at.toggle if t.label == AUTO).value is True
 
 
+@pytest.mark.usefixtures("only_old_gates")
 def test_step_5_shows_who_was_approved_automatically(env):
     settings, repo = env
     aid = video_assignment(repo)
@@ -492,13 +497,14 @@ def test_step_5_shows_who_was_approved_automatically(env):
     review.auto_approve(repo, repo.latest_run(sid, Stage.pfb, subject_id=hanako["id"]))
     at = ok(app(session={"assignment_id": aid}))
     page = html(at)
-    assert "承認 1 / 全 3" in page
-    assert "pfb-chip" in page and "自動で承認" in page and "花子さん" in page
+    assert "承認 0 / 全 3" in page and "自動承認 1（人は未確認）" in page   # a person's count apart
+    assert "pfb-chip" in page and "自動承認（機械チェック済み・人は未確認）" in page and "花子さん" in page
     radio = at.radio(key=f"pfb_student_{sid}")
-    assert any("自動で承認" in o for o in radio.options)
+    assert any("自動承認・人は未確認" in o for o in radio.options)
     radio.set_value(hanako["id"]).run()
     ok(at)
-    assert 'class="pfb-stamp"' in html(at) and "自動で承認" in html(at)
+    assert 'class="pfb-stamp"' not in html(at)          # the stamp is a person's approval
+    assert "自動承認（機械チェック済み・人は未確認）" in html(at)
     assert len(primaries(at)) == 1
 
 

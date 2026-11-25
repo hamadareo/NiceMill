@@ -39,6 +39,7 @@ STAGE_NAMES: dict[str, str] = {
     "evidence": "場面の書き出し", "contribution": "よかった点を選ぶ", "pfb": "文章づくり",
 }
 REVIEW_NAME = "確認と承認"
+LIVE_REVIEW_NAME = "文を読む・直す"   # 「あとから訂正」 works: no approvals
 FALLBACK_WEIGHTS: dict[str, float] = {
     "detect": 1, "prepare": 1, "transcribe": 1, "track": 4, "people": 0.5, "identity": 1,
     "behavior": 10, "evidence": 3, "contribution": 3, "pfb": 3,
@@ -318,20 +319,25 @@ def _people(repo: Repo, sub: dict, cameras: list[str], track: list[_Target],
     return out, RUNNING if running else QUEUED
 
 
-def _review(approved: int, total: int, at_review: bool) -> StageLine:
+def _review(approved: int, total: int, at_review: bool, live: bool = False) -> StageLine:
+    """The review line: 「確認と承認」 (承認 n / 全 m); for a 「あとから訂正」 work 「文を読む・直す」
+    (文ができた人 n / 全 m), `approved` being the people with a text."""
     if total > 0 and approved == total:
         status = DONE
     elif approved > 0 or at_review:
         status = RUNNING
     else:
         status = QUEUED
+    if live:
+        return StageLine("review", LIVE_REVIEW_NAME, status, approved / total if total else 0.0,
+                         note=f"文ができた人 {approved} / 全 {total}")
     return StageLine("review", REVIEW_NAME, status, approved / total if total else 0.0,
                      note=f"承認 {approved} / 全 {total}")
 
 
 def submission_analysis(repo: Repo, sub: dict, kind: Kind, engine: str,
                         weights: dict[str, float], *, status: str, reason: str, approved: int,
-                        total: int, step: str | None = None) -> Analysis:
+                        total: int, step: str | None = None, live: bool = False) -> Analysis:
     """One group's analysis. `status` and `reason` are the group's own (SubProgress:
     "your_turn" sets waiting_for_you, "done" makes every stage done, "stopped" stops the
     first stage not done unless one has stopped already);
@@ -382,14 +388,14 @@ def submission_analysis(repo: Repo, sub: dict, kind: Kind, engine: str,
                          per_camera.items()}, waiting_for_you=status == "your_turn")
     analysis.fraction = 1.0 if analysis.finished else min(fraction, CAP)
     at_review = step in ("review", "pdf") if step is not None else analysis.finished
-    analysis.review = _review(approved, total, at_review)
+    analysis.review = _review(approved, total, at_review, live)
     return analysis
 
 
 # --- the work ---
 
 def work_analysis(parts: list[tuple[str, Analysis]], approved: int,
-                  total: int) -> Analysis | None:
+                  total: int, live: bool = False) -> Analysis | None:
     """The work's analysis from its groups' (label, analysis): the mean fraction, and per
     stage the most pressing status (stopped > running > waiting_gpu > queued > done) with
     the note of the first group in it (named when there are several groups)."""
@@ -410,7 +416,7 @@ def work_analysis(parts: list[tuple[str, Analysis]], approved: int,
                                 note))
     at_review = any(a.review.status in (RUNNING, DONE) for _, a in parts)
     return Analysis(sum(a.fraction for _, a in parts) / len(parts), stages,
-                    _review(approved, total, at_review), any(a.redo for _, a in parts),
+                    _review(approved, total, at_review, live), any(a.redo for _, a in parts),
                     dict(parts[0][1].cameras) if not several else {},
                     waiting_for_you=any(a.waiting_for_you for _, a in parts))
 

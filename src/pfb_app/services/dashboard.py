@@ -14,6 +14,10 @@
 
 A work whose videos were removed (assignments.media_removed_at) lost its boxes with them, so
 it keeps its moments and texts only, and nothing can be played.
+
+A 「あとから訂正」 work (`Board.live`) has no approvals: a person's text is the newest one, and it
+is used (`Person.approved`, the questions of services.ask) unless it is reported wrong; the
+status is the check state (訂正なし / 訂正済み 版N / 誤りの報告あり・確認中), never 承認.
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ from pfb_app.domain.vocab import Words
 from pfb_app.export import labels, sheets as sheet_mod, tracks
 from pfb_app.export.labels import Category
 from pfb_app.pipeline.pfb3x3_bridge import format_game_clock
+from pfb_app.services.corrections import STATE_REPORT
 from pfb_app.preprocess.frames import format_time
 from pfb_app.storage.db import Repo
 
@@ -46,9 +51,9 @@ class Person:
     subject_id: int
     name: str
     team: str | None
-    approved: bool
-    status: str                        # 承認済み, 確認待ち, ...
-    text: str | None                   # the approved text (None before approval)
+    approved: bool                     # the text is used (approved; live: not reported wrong)
+    status: str                        # 承認済み, 確認待ち, ... (live: the check state)
+    text: str | None                   # the text used (None before approval / while reported)
     total: int                         # good moments
     counts: dict[str, int]             # category key -> good moments (typed only)
     untyped: int
@@ -78,6 +83,7 @@ class Moment:
     camera: str | None
     cite_rank: int                     # its place in the text's evidence_refs (99: not cited)
     approved: bool = True              # False: the person's text is not approved yet (承認前)
+    state: str = ""                    # the person's status word for the list (live: check state)
 
 
 @dataclass
@@ -99,6 +105,7 @@ class Board:
     cameras: list[str]
     videos: dict[str, Path]            # camera -> the local video still there
     frame_sizes: dict[str, tuple[int, int]]
+    live: bool = False                 # a 「あとから訂正」 work: no approvals, the check states
 
     @property
     def several_cameras(self) -> bool:
@@ -147,6 +154,9 @@ def stamp(repo: Repo, aid: int) -> str:
             " ON s.submission_id = b.id WHERE b.assignment_id=? ORDER BY s.id", (aid,))],
         tuple(q("SELECT COALESCE(MAX(j.id), 0) FROM jobs j JOIN submissions b"
                 " ON j.submission_id = b.id WHERE b.assignment_id=?", (aid,)).fetchone()),
+        tuple(q("SELECT COALESCE(MAX(v.id), 0) FROM text_versions v JOIN subjects s"   # corrections
+                " ON v.subject_id = s.id JOIN submissions b ON s.submission_id = b.id"
+                " WHERE b.assignment_id=?", (aid,)).fetchone()),
         [tuple(r) for r in q(
             "SELECT j.id, j.stage, j.camera, j.status FROM jobs j JOIN submissions b"
             " ON j.submission_id = b.id WHERE b.assignment_id=? AND j.status IN (?,?,?)"
@@ -202,6 +212,7 @@ def build(repo: Repo, aid: int, sid: int | None = None) -> Board:
     if label is None:
         raise KeyError(f"submission {sid} is not in assignment {aid}")
     sub, sheets = sheet_mod.group_sheets(repo, aid, sid)
+    live = work.get("review_mode") == "correct_later"
     removed = bool(work.get("media_removed_at"))
     cams = {c.name: c for c in sub.cameras()}
     subjects = {s["id"]: s for s in repo.list_subjects(sid)}
@@ -226,9 +237,12 @@ def build(repo: Repo, aid: int, sid: int | None = None) -> Board:
         for cat, n in s.counts(categories):
             counts[cat.key] = n
         court_cam = cams.get(s.court_camera) if s.court_camera else None
+        # live: the newest text is used unless it is reported wrong (corrections.usable_run)
+        used = s.approved or (s.live and s.live_label != STATE_REPORT)
+        status = (s.live_label if s.live else (s.reason or "")) if not s.approved else APPROVED
         people.append(Person(
-            subject_id=s.subject_id, name=s.name, team=s.team, approved=s.approved,
-            status=APPROVED if s.approved else (s.reason or ""), text=s.text if s.approved else None,
+            subject_id=s.subject_id, name=s.name, team=s.team, approved=used,
+            status=status, text=s.text if used else None,
             total=s.counted, counts=counts, untyped=s.untyped,
             on_screen_s=None if removed else s.on_screen_s,
             distance_m=None if removed else s.distance_m,
@@ -242,7 +256,8 @@ def build(repo: Repo, aid: int, sid: int | None = None) -> Board:
             moments.append(Moment(s.subject_id, s.name, s.team, m.t_s, m.when, m.category,
                                   m.what, m.cited, m.camera,
                                   refs.index(m.ref_id) if m.ref_id in refs else 99,
-                                  s.approved))
+                                  used, APPROVED if s.approved else (
+                                      status if live else NOT_YET)))
     moments.sort(key=lambda m: (m.t_s is None, m.t_s or 0.0, sheet_mod.name_order(m.name)))
     videos = {} if removed else {n: c.video for n, c in cams.items() if c.video is not None}
     sizes = {n: (c.meta.width, c.meta.height) for n, c in cams.items()
@@ -253,7 +268,7 @@ def build(repo: Repo, aid: int, sid: int | None = None) -> Board:
                  duration_s=sub.duration_s(), clock_offset_s=sub.clock_offset_s,
                  start_s=sub.start_s, people=people, moments=moments, media_removed=removed,
                  retracking=any(p.retracking for p in people), cameras=sorted(cams),
-                 videos=videos, frame_sizes=sizes)
+                 videos=videos, frame_sizes=sizes, live=live)
 
 
 def _evidence_refs(repo: Repo, sheet) -> list[str]:
@@ -435,7 +450,7 @@ def moments_csv(board: Board) -> bytes:
         rows.append([m.when, m.name, m.team if board.sports else board.group_label,
                      m.category.label if m.category else "種類がわからない", m.what,
                      "はい" if m.cited else "", labels.camera_word(m.camera),
-                     APPROVED if m.approved else NOT_YET])
+                     m.state or (APPROVED if m.approved else NOT_YET)])
     return _csv(rows)
 
 

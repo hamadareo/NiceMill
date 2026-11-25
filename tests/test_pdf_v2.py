@@ -35,7 +35,7 @@ def page_texts(data: bytes) -> list[str]:
         for i in range(len(doc)):
             page = doc[i]
             tp = page.get_textpage()
-            out.append(tp.get_text_bounded())
+            out.append(tp.get_text_bounded().replace("\r\n", ""))   # a long line wraps
             tp.close()
             page.close()
         return out
@@ -91,7 +91,8 @@ def test_every_handout_starts_on_its_own_page_with_its_own_numbers(env):
 
 
 CHECKED = "このフィードバックは動画をもとに作り、コーチが確かめたものです。"
-AUTO_SENT = "このフィードバックは動画をもとに自動で作り、そのまま渡しています。"
+AUTO_SENT = ("このフィードバックは動画をもとに自動で作りました。機械チェックは通りましたが、"
+             "コーチは確かめていません（機械チェック済み・人は未確認）。")
 
 
 def test_an_auto_approved_handout_says_so_on_its_own_pages_only(env):
@@ -117,7 +118,8 @@ def test_an_auto_approved_handout_says_so_on_its_own_pages_only(env):
     assert CHECKED in shared and AUTO_SENT not in shared
 
 
-MIXED = "このフィードバックは動画をもとに作りました。1人の分は確かめずに自動で承認し、ほかはコーチが確かめています。"
+MIXED = ("このフィードバックは動画をもとに作りました。1人の分は機械チェック済み・人は未確認の"
+         "自動承認で、ほかはコーチが確かめています。")
 
 
 def test_the_evaluator_pdf_never_says_a_person_checked_an_auto_approved_sheet(env):
@@ -603,7 +605,7 @@ def _drawn_images(data: bytes) -> list[list[str]]:
 
 
 def test_each_person_in_the_combined_handout_gets_their_own_pictures(env):
-    """2026-10-24 production bug: every person's handout in the one PDF showed the first
+    """Regression test for a past bug: every person's handout in the one PDF showed the first
     person's pictures (the asset URLs were numbered per person, and the combined PDF kept
     one image per URL)."""
     settings, repo = env
@@ -620,7 +622,7 @@ def test_each_person_in_the_combined_handout_gets_their_own_pictures(env):
 
 
 def test_no_picture_of_a_moment_when_the_box_was_on_another_player(env):
-    """2026-10-24 production bug (work 6): one person's 4th picture showed another player
+    """Regression test for a past bug: one person's 4th picture showed another player
     (the track had swapped). With the names stage's number timeline, a cited moment whose
     label read another number is shown without a picture (and no fallback frame)."""
     from pfb_app.domain.models import Stage

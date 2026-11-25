@@ -126,6 +126,7 @@ class PersonPlan:
     summary: str
     others: str                      # 「ほかの選手」
     parts: list[Part]
+    live: str | None = None          # 「あとから訂正」: 確認状況 and 文の版 (the end card says so)
 
 
 @dataclass
@@ -227,9 +228,14 @@ def legend_lines(plan: PersonPlan, dashed: bool) -> list[str]:
             f"点線：{AI_REGION}　右の画像：{AI_STILLS}" if dashed else f"右の画像：{AI_STILLS}"]
 
 
-def end_lines(dashed: bool) -> list[str]:
+LIVE_END = ("この動画は、AIが作成した文章と、そのもとになった場面の記録から作りました。",
+            "人の確認を経ていない場合があります。誤りがあれば訂正できます。")
+
+
+def end_lines(dashed: bool, live: str | None = None) -> list[str]:
     note = f"{AI_NOTE[0]}{AI_NOTE[1]}"
-    lines = ["この動画は、承認した文章と、そのもとになった場面の記録から作りました。",
+    lines = ([*LIVE_END, live] if live else
+             ["この動画は、承認した文章と、そのもとになった場面の記録から作りました。"]) + [
              f"点線と右の画像は、AIに渡した範囲と画像です（{note}）。" if dashed
              else f"右の画像は、AIに渡した画像です（{note}）。"]
     return lines + [RECT_RULE] if dashed else lines
@@ -256,7 +262,7 @@ def end_card(plan: PersonPlan, dashed: bool = False) -> np.ndarray:
     x, width = 96, W - 192
     y = _text(d, (x, 180), wrap(f"{plan.name}さんのよかった場面は以上です", font(HEAD + 4, True),
                                 width, 2), font(HEAD + 4, True), INK)
-    for s in end_lines(dashed):
+    for s in end_lines(dashed, plan.live):
         y = _text(d, (x, y + 20), wrap(s, font(SMALL), width, 2), font(SMALL), MUTED)
     return np.asarray(img)
 

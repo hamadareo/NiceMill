@@ -1,7 +1,8 @@
 # Lightweight dependencies for running the test suite WITHOUT a GPU and WITHOUT any model or data.
 # Exact versions that passed the full suite on Linux (Python 3.10, 2026-11-19), from `pip freeze` of a fresh venv.
 # Direct dependencies: streamlit pydantic pyyaml opencv-python-headless pypdfium2 jinja2 weasyprint openpyxl
-#   argon2-cffi numpy av pillow starlette httpx pytest python-docx pypdf[crypto]
+#   argon2-cffi numpy av pillow starlette httpx pytest python-docx pypdf[crypto] segno
+# segno (QR code of the booklet) was added on 2026-11-23 with the version the booklet was made with.
 # WeasyPrint additionally needs the Pango system library (Linux: libpango-1.0-0).
 # The full application stack (vLLM, PyTorch, ...) is described in pyproject.toml / README.md.
 altair==6.2.2
@@ -61,6 +62,7 @@ pyyaml==6.0.3
 referencing==0.37.0
 requests==2.34.2
 rpds-py==0.30.0
+segno==1.6.6
 six==1.17.0
 starlette==1.7.0
 streamlit==1.65.0

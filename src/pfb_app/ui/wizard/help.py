@@ -38,6 +38,11 @@ TIPS = {
     "wait": "画面を閉じても解析は続きます。終わると、ホームの札が「あなたの番」に変わります。",
     "review": "文章は、時刻つきの場面をもとに作られています。根拠の場面と合っているかを見てから承認します。",
     "pdf": "参加者に渡す前に、PDFを開いて名前と文章、写真・図を確かめてください。",
+    # 「あとから訂正」 works (no approvals): used in place of the key without "_live"
+    "people_live": "この段階はとばしてもかまいません。名前は「文を読む・直す」でもつけられます。",
+    "review_live": ("文章は、時刻つきの場面をもとに作られています。根拠の場面と違っていたら、"
+                    "直すか「この文は間違い」で知らせます。直した記録は残ります。"),
+    "pdf_live": "PDFを開いて名前と文章、写真・図を確かめてください。文を直したときは、もう一度受け取ります。",
 }
 
 CSS = """<style>
@@ -81,10 +86,11 @@ def tip_html(key: str) -> str:
             f'{escape(theme.L(text))}</p>')
 
 
-def step_footer(key: str) -> None:
+def step_footer(key: str, live: bool = False) -> None:
     """Under a step screen: its tip, then 「はじめての方へ」 (and on the PDF step,
-    「この解析の確かさ」)."""
-    tip = tip_html(key)
+    「この解析の確かさ」). `live`: a 「あとから訂正」 work, whose tip (key + "_live") is used
+    when there is one."""
+    tip = tip_html(f"{key}_live" if live and f"{key}_live" in TIPS else key)
     if tip:
         st.html(CSS + tip)
     with keyed.container(horizontal=True, key="pfb_help_links"):

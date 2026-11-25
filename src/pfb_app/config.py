@@ -129,7 +129,7 @@ class Settings(BaseModel):
     tid_python: Path | None = None   # None: ~/tid_tracker/venv/bin/python (the TID venv)
     # accounts (services.auth): how long a sign-in lasts in a browser (days, absolute)
     session_days: int = 7
-    # open mode (ruling 2026-11-13: 「ログインなしで使えるように」): false opens the app
+    # open mode (2026-11-13, so that the app can be used without signing in): false opens the app
     # without a sign-in — ui.auth_ui.resolve answers an open administrator (admin of role),
     # so every screen and upload works, and the audit names (0, "open"). The sign-in
     # screens, the auth tables and `pfb-admin` stay as they are: true returns the gate.
@@ -140,6 +140,23 @@ class Settings(BaseModel):
     ask_server: str | None = None
     ask_model: str | None = None
     ask_timeout_sec: int = 120
+    # 自動承認 (services.autoapprove): the thresholds of the machine checks. The switch itself is
+    # the work's own (off by default); these only say how strict the checks are.
+    auto_approve_min_scenes: int = 2          # different scenes a text must cite
+    auto_approve_min_confidence: Literal["high", "medium", "low"] = "high"   # of every cited scene
+    auto_approve_min_chars: int = 20          # a shorter text is never approved by a machine
+    # 動作の再確認 (pipeline.claim_scan): after a feedback text is made, for a work whose automatic
+    # approval is on, the action words of the cited scenes are re-checked and the result is kept
+    # (table claim_checks). Movement words (走る・歩く・移動) are read from the tracks (no model, always
+    # on). Shoot / dribble / pass / defend need a pose measurement and two questions to a LOCAL vision
+    # model (an OpenAI-compatible server on this machine that you start yourself, see docs/autoapprove.md);
+    # that part is off by default: it costs GPU memory and about a minute per scene.
+    claim_check_enabled: bool = False
+    claim_check_vlm_server: str = "http://127.0.0.1:1234/v1"   # must name this machine
+    claim_check_vlm_model: str = "claims-vlm"
+    claim_check_timeout_sec: int = 600        # per question
+    claim_check_max_scenes: int = 10          # scenes re-checked per text (the cited ones, in order)
+    claim_check_pose_weights: Path | None = None   # None: <data_dir>/models/yolo11x-pose.pt
 
     @field_validator("data_dir", "inbox_dir", "prompts_dir", "engine_dir")
     @classmethod
@@ -147,7 +164,7 @@ class Settings(BaseModel):
         return v.expanduser()
 
     @field_validator("engine_python", "tracker_python", "whisper_python", "tid_python",
-                     "linecall_demo_video", "backup_dir", "log_dir", "alert_webhook_file")
+                     "linecall_demo_video", "claim_check_pose_weights", "backup_dir", "log_dir", "alert_webhook_file")
     @classmethod
     def _expand_user_optional(cls, v: Path | None) -> Path | None:
         return None if v is None else v.expanduser()

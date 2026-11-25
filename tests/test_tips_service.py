@@ -152,11 +152,12 @@ def test_bulk_and_automatic_approval_confirm_clean_tips_too(repo, made):
     assert tips.for_pdf(repo, sid, subj["Pz"]) == [TIP["Pz"]]
 
 
-def test_the_workers_automatic_approval_confirms_clean_tips_too(repo, made):
+@pytest.mark.usefixtures("only_old_gates")
+def test_the_workers_automatic_approval_does_not_confirm_the_tips(repo, made):
     aid, sid, subj, pfb = made
     review.set_auto_approve(repo, aid, True)
     assert review.auto_approve(repo, pfb["Pz"])
-    assert tips.for_pdf(repo, sid, subj["Pz"]) == [TIP["Pz"]]
+    assert tips.for_pdf(repo, sid, subj["Pz"]) == []     # a person confirms tips, a machine does not
 
 
 def test_a_failure_in_the_tips_never_fails_an_approval(repo, made, monkeypatch):

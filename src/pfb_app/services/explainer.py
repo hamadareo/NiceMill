@@ -2,7 +2,9 @@
 
 - A person's video: an evaluated person (pipeline.auto_people.is_evaluated) of a video work
   whose text is approved now (review.subject_status) and cites at least one moment, while the
-  tracks are not being redone. The moments, their order and their words are the handout's
+  tracks are not being redone. In a 「あとから訂正」 work: whose newest text is not reported
+  wrong (services.corrections.usable_run) and who is in the PDF (its 「同一人物の確認」, with the
+  scenes it uses); the video says that the text was made by AI, with its check state and version. The moments, their order and their words are the handout's
   (export.sheets / export.views "handout"); the frames come from the playable source
   (services.moment_clip.source: a small non-HEVC original or the ready proxy, never a 4K/HEVC
   original); what the VLM was given is export.explainer_ai's (never an "attention").
@@ -71,6 +73,8 @@ HALT = threading.Event()   # the worker is stopping: a video being made stops (n
 NOT_VIDEO = "解説動画は、動画の作業で作れます。"
 NOT_EVALUATED = "この人は評価に入っていないため、解説動画は作れません。"
 NOT_APPROVED = "文章を承認すると、解説動画を作れます。"
+NOT_USABLE_LIVE = "文がまだないか、誤りの報告を確認中のため、解説動画は作れません。"   # 「あとから訂正」
+NOT_PRINTED = "同じ人と確かめられていない（PDFに入っていない）ため、解説動画は作れません。"
 NO_MOMENTS = "よかった場面の記録がないため、解説動画は作れません。"
 RETRACKING = "追跡をやり直しているため、いまは作れません。終わってから作ってください。"
 MEDIA_REMOVED = "この作業の動画は消してあるため、解説動画は作れません。"
@@ -234,9 +238,18 @@ def person_reason(repo: Repo, subject_id: int, settings: Settings | None = None)
         return why
     if not is_evaluated(subject):
         return NOT_EVALUATED
-    if review.subject_status(repo, subject_id) != SubjectStatus.approved:
+    from pfb_app.services import corrections   # noqa: PLC0415
+    if corrections.mode_of(work) == corrections.CORRECT_LATER:
+        if corrections.usable_run(repo, subject, work) is None:
+            return NOT_USABLE_LIVE
+        found = sheets.person_moments(repo, subject_id)      # None: not in the PDF (the gate)
+        if found is None:
+            return NOT_PRINTED
+        moments = found
+    elif review.subject_status(repo, subject_id) != SubjectStatus.approved:
         return NOT_APPROVED
-    moments = sheets.person_moments(repo, subject_id) or []
+    else:
+        moments = sheets.person_moments(repo, subject_id) or []
     if not any(m.cited for m in moments):
         return NO_MOMENTS
     if _retracking(repo, submission):
@@ -273,8 +286,13 @@ def ensure_sources(repo: Repo, settings: Settings) -> int:
         for submission in repo.list_submissions(work["id"]):
             if _work_reason(repo, submission, work):
                 continue
-            if not any(is_evaluated(s) and s.get("approval_status") == "approved"
-                       for s in repo.list_subjects(submission["id"])):
+            if work.get("review_mode") == "correct_later":   # someone with a text in use
+                from pfb_app.services import corrections   # noqa: PLC0415
+                if not any(is_evaluated(s) and corrections.usable_run(repo, s, work) is not None
+                           for s in repo.list_subjects(submission["id"])):
+                    continue
+            elif not any(is_evaluated(s) and s.get("approval_status") == "approved"
+                         for s in repo.list_subjects(submission["id"])):
                 continue
             for video, size, _ in _sources(repo, submission):
                 state, _, codec = source_state(settings, video, size)
@@ -343,6 +361,11 @@ def person_stamp(repo: Repo, subject_id: int) -> str:
     latest = repo.latest_run(submission["id"], Stage.pfb, subject_id=subject_id)
     parts = [PERSON, _common(repo, submission, work), _subject_row(subject),
              latest.id if latest else None, _chain(repo, subject.get("approved_run_id"))]
+    if work.get("review_mode") == "correct_later":   # the check state the video shows
+        from pfb_app.services import corrections   # noqa: PLC0415
+        rows = corrections.history(repo, subject_id)
+        parts += [rows[-1].id if rows else None, _chain(repo, latest.id if latest else None),
+                  sorted((submission.get("meta") or {}).get("people_checked") or [])]
     return hashlib.sha1(repr(parts).encode()).hexdigest()
 
 
@@ -443,7 +466,8 @@ def _handout(repo: Repo, subject_id: int):
     from pfb_app.export import pictures, sheets   # noqa: PLC0415
     subject = repo.get_subject(subject_id)
     submission, work = _ids(repo, subject["submission_id"])
-    sub, found = sheets.group_sheets(repo, work["id"], submission["id"])
+    # gate: a 「あとから訂正」 work's video has the PDF's scenes (its 同一人物の確認)
+    sub, found = sheets.group_sheets(repo, work["id"], submission["id"], gate=True)
     sheet = next(s for s in found if s.subject_id == subject_id)
     if sheet.short:
         return sub, sheet, work, []
@@ -517,9 +541,10 @@ def person_plan(repo: Repo, settings: Settings, subject_id: int) -> ev.PersonPla
                 part.stills = list(((m._source.output or {}).get("frames") or {})
                                    .get(m.ref_id) or [])
         parts.append(part)
+    live = (f"確認状況：{sheet.live_label}　文の版：{sheet.live_version}" if sheet.live else None)
     return ev.PersonPlan(subject["display_name"], work["title"],
                          sheets.local_date(work.get("created_at")), _summary(sheet.text),
-                         f"ほかの{labels.words_for(work).people}", parts)
+                         f"ほかの{labels.words_for(work).people}", parts, live)
 
 
 def tracking_plan(repo: Repo, settings: Settings, sid: int) -> ev.TrackingPlan:
@@ -692,7 +717,8 @@ def _prune(repo: Repo, settings: Settings, aid: int, sid: int, keep: Path | None
             subject_id = None if stem == TRACKING else int(stem[len("person_"):])
             meta = _sidecar(mp4.with_suffix(".json")) or {}
             reason = _reason(repo, sid, subject_id, settings)
-            gone = reason in (NOT_EVALUATED, NOT_APPROVED, NO_MOMENTS, NOBODY, MEDIA_REMOVED) \
+            gone = reason in (NOT_EVALUATED, NOT_APPROVED, NO_MOMENTS, NOBODY, MEDIA_REMOVED,
+                              NOT_USABLE_LIVE, NOT_PRINTED) \
                 or (reason is None and meta.get("stamp") != _stamp(repo, sid, subject_id))
         except (KeyError, ValueError):
             gone = True

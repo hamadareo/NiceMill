@@ -2,6 +2,8 @@
 share pages (one set per app; stored in `<data_dir>/organisation/`).
 
 - name: at most MAX_NAME characters (spaces trimmed);
+- contact: 訂正のご連絡先 printed on the 「あとから訂正」 handouts, at most MAX_CONTACT characters
+  on one line (spaces trimmed; empty: the PDFs say where to enter it);
 - accent: one of the ACCENTS presets (each reads as text on white, contrast >= 4.5:1);
   free colours are refused. Data colours of the charts never change with it;
 - logo: PNG, JPEG or SVG of at most MAX_LOGO_BYTES. Pictures are opened and saved again as
@@ -31,6 +33,7 @@ ACCENTS: dict[str, tuple[str, str]] = {
 }
 DEFAULT_ACCENT = "blue"
 MAX_NAME = 40
+MAX_CONTACT = 80
 MAX_LOGO_BYTES = 512 * 1024
 MAX_LOGO_PX = 2000
 FILE = "organisation.json"
@@ -47,6 +50,7 @@ class Organisation:
     name: str = ""
     accent: str = DEFAULT_ACCENT
     logo: Path | None = None
+    contact: str = ""
 
     @property
     def accent_hex(self) -> str:
@@ -74,7 +78,8 @@ def load(settings) -> Organisation:
             path = None        # stored before the allowlist, or changed on disk: not used
     accent = rec.get("accent") if rec.get("accent") in ACCENTS else DEFAULT_ACCENT
     return Organisation(name=str(rec.get("name") or "")[:MAX_NAME], accent=accent,
-                        logo=path if path is not None and path.is_file() else None)
+                        logo=path if path is not None and path.is_file() else None,
+                        contact=" ".join(str(rec.get("contact") or "").split())[:MAX_CONTACT])
 
 
 _SVG_ELEMENTS = frozenset({
@@ -210,11 +215,16 @@ def _write(path: Path, data: bytes) -> None:
 
 
 def save(settings, *, name: str, accent: str, logo: bytes | None = None,
-         logo_name: str | None = None, remove_logo: bool = False) -> Organisation:
-    """Validate and store the settings; a logo left out keeps the stored one."""
+         logo_name: str | None = None, remove_logo: bool = False,
+         contact: str | None = None) -> Organisation:
+    """Validate and store the settings; a logo left out keeps the stored one, and so does a
+    contact left out (None)."""
     name = " ".join((name or "").split())
     if len(name) > MAX_NAME:
         raise OrgError(f"団体の名前は{MAX_NAME}文字までにしてください。")
+    contact = load(settings).contact if contact is None else " ".join(contact.split())
+    if len(contact) > MAX_CONTACT:
+        raise OrgError(f"訂正のご連絡先は{MAX_CONTACT}文字までにしてください。")
     if accent not in ACCENTS:
         raise OrgError("色は一覧から選んでください。")
     stored = None if logo is None else validate_logo(logo, logo_name or "")
@@ -230,6 +240,6 @@ def save(settings, *, name: str, accent: str, logo: bytes | None = None,
         data, ext = stored
         logo_file = f"{LOGO_STEM}{ext}"
         _write(d / logo_file, data)
-    _write(d / FILE, json.dumps({"name": name, "accent": accent, "logo": logo_file},
-                                ensure_ascii=False).encode("utf-8"))
+    _write(d / FILE, json.dumps({"name": name, "accent": accent, "logo": logo_file,
+                                 "contact": contact}, ensure_ascii=False).encode("utf-8"))
     return load(settings)

@@ -93,7 +93,7 @@ def test_what_tailscale_serve_sends_is_let_in():
 
 
 def test_a_quick_tunnel_is_refused_in_every_way_it_shows_itself():
-    """What cloudflared sent to the app on 2026-11-13: a public name, the visitor's address."""
+    """What cloudflared sends to the app: a public name, the visitor's address."""
     quick = [("host", "random-words.trycloudflare.com"), ("x-forwarded-for", PUBLIC),
              ("cf-connecting-ip", PUBLIC), ("cf-ray", "abc-NRT"), ("cdn-loop", "cloudflared")]
     assert not open_guard.decide("127.0.0.1", quick).ok

@@ -39,12 +39,16 @@ table.facts td { padding: 1mm 0; font-weight: bold; }
 <i class="footline" data-footer="{{ footer }}"></i>
 {{ b.masthead(org, title, date, src) }}
 <h1 class="title serif">{{ title }}</h1>
+{% if live %}<p class="live-banner">{{ live_banner }}</p>{% endif %}
+{% if draft_count %}<p class="draft-banner">{{ draft_banner }}（{{ draft_count }}人分）</p>
+<p class="draft-note">{{ draft_note }}</p>{% endif %}
 {% if task_excerpt %}<p class="excerpt">{{ task_excerpt }}</p>{% endif %}
 <table class="facts">
 {% if date %}<tr><th>日付</th><td>{{ date }}</td></tr>{% endif %}
 {% if cameras %}<tr><th>カメラ</th><td>{{ cameras|length }}台（{{ cameras|join("、") }}）</td></tr>{% endif %}
 <tr><th>{{ words.people }}</th><td>{{ people_count }}人</td></tr>
-<tr><th>承認したフィードバック</th><td>{{ approved_count }}人</td></tr>
+{% if live_count %}<tr><th>フィードバックの文</th><td>{{ live_count }}人</td></tr>{% else %}<tr><th>承認したフィードバック</th><td>{{ approved_count }}人</td></tr>{% endif %}
+{% if draft_count %}<tr><th>未承認（下書き）</th><td>{{ draft_count }}人</td></tr>{% endif %}
 <tr><th>解析の設定</th><td>{{ model }}</td></tr>
 </table>
 {% if summary.moments or summary.minutes %}
@@ -72,10 +76,10 @@ table.facts td { padding: 1mm 0; font-weight: bold; }
 {% macro card(c) %}
 <div class="card">
 {{ b.portrait(c, src, accent) }}
-<span class="who">{{ c.name }}</span>
-<span>よかった場面 {{ c.count }}</span>
+<span class="who">{{ c.name }}</span>{% if c.jersey_id %}<span class="note">{{ c.jersey_id }}</span>{% endif %}
+{% if c.sheet.ident_blocked %}<span>集計していません</span>{% else %}<span>よかった場面 {{ c.count }}</span>{% endif %}
 {% if c.top %}<br><span>多かったのは {{ c.top.glyph }} {{ c.top.label }}</span>{% endif %}
-<br>{% for chip in c.chips %}<span class="chip{% if chip == '入っていない' %} out{% endif %}">{{ chip }}{% if chip == '入っていない' and c.reason %}（{{ c.reason }}）{% endif %}</span>{% endfor %}
+<br>{% for chip in c.chips %}<span class="chip{% if chip == '入っていない' %} out{% elif chip.startswith('未承認') %} draft{% endif %}">{{ chip }}{% if chip == '入っていない' and c.reason %}（{{ c.reason }}）{% endif %}</span>{% endfor %}
 </div>
 {% endmacro %}
 {% if groups|length > 1 %}
@@ -96,10 +100,12 @@ table.facts td { padding: 1mm 0; font-weight: bold; }
 {% for p in people %}
 <section class="person-page">
 <i class="footline" data-footer="{{ p.footer }}"></i>
+{{ b.draft_banner(p, draft_banner) }}
+{{ b.live_banner(p, live_banner) }}
 <section class="person">
 {{ b.portrait(p, src, accent) }}
 <div><h1 class="name serif">{{ p.name }}</h1>
-<p class="sub">{% for chip in p.sheet.chips %}<span class="chip">{{ chip }}</span>{% endfor %}{% if p.sheet.team %}<span class="chip">{{ p.sheet.team }}</span>{% endif %}</p></div>
+<p class="sub">{% if p.jersey_id %}{{ p.jersey_id }}　{% endif %}{% for chip in p.sheet.chips %}<span class="chip{% if p.draft %} draft{% endif %}">{{ chip }}</span>{% endfor %}{% if p.sheet.team %}<span class="chip">{{ p.sheet.team }}</span>{% endif %}</p></div>
 </section>
 {% if p.short %}<p class="short-note">{{ short_note }}</p>{% endif %}
 {{ b.letter(p) }}
@@ -114,7 +120,9 @@ table.facts td { padding: 1mm 0; font-weight: bold; }
 {% endfor %}
 </ul>
 {% endif %}
+{{ b.live_record(p, stamp, contact, "teacher") }}
 <div class="prov">{% for line in p.sheet.provenance %}<p>{{ line }}</p>{% endfor %}{% if p.plain %}<p>{{ plain_label }}：{{ p.plain.label }}</p>{% if p.plain.text %}<p>{{ p.plain.text }}</p>{% endif %}{% endif %}</div>
 </section>
 {% endfor %}
+{{ b.credit(credits) }}
 {% endblock %}

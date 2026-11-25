@@ -48,6 +48,7 @@ QUEUED = "順番を待っています。作り終わると、ここに動画が�
 RUNNING = "作っています（{p}%）{note}"
 STALE = "前に作った動画のあとで、文章や名前、追跡の記録が変わりました。作り直してください。"
 NOBODY = "承認した人がいると、解説動画を作れます。"
+LIVE_NOBODY = "PDFに入る文のある人がいると、解説動画を作れます。"   # 「あとから訂正」
 REMOVED = "この作業の動画は消してあるため、解説動画は作れません。"
 POLL_SEC = 3
 
@@ -182,7 +183,8 @@ def _head(text: str) -> None:
 
 
 def section(repo: Repo, work: dict) -> None:
-    """Step 6's 解説動画: pick an approved person, their panel; then the group's 追跡の様子."""
+    """Step 6's 解説動画: pick an approved person (「あとから訂正」: one whose text is in use), their
+    panel; then the group's 追跡の様子."""
     if work.get("kind") != Kind.video.value or not access.can_edit():
         return
     _head(TITLE)
@@ -195,13 +197,19 @@ def section(repo: Repo, work: dict) -> None:
     groups = repo.list_submissions(work["id"])
     several = len(groups) > 1
     people = []
+    live = work.get("review_mode") == "correct_later"
+    from pfb_app.services import corrections   # noqa: PLC0415
     for g in groups:
         for s in repo.list_subjects(g["id"]):
-            if is_evaluated(s) and review.subject_status(repo, s["id"]) == SubjectStatus.approved:
+            if not is_evaluated(s):
+                continue
+            # 「あとから訂正」: a text in use (not reported wrong); the panel says if not in the PDF
+            if (corrections.usable_run(repo, s, work) is not None if live
+                    else review.subject_status(repo, s["id"]) == SubjectStatus.approved):
                 label = f"{s['display_name']}さん" + (f"（{g['label']}）" if several else "")
                 people.append((s["id"], g["id"], s["display_name"], label))
     if not people:
-        _note(NOBODY)
+        _note(LIVE_NOBODY if live else NOBODY)
     else:
         labels_ = {p[0]: p[3] for p in people}
         picked = st.selectbox(theme.L(WHO), list(labels_), format_func=labels_.get,

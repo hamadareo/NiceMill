@@ -48,7 +48,7 @@ from pfb_app.domain.models import Kind, Stage, StageRun
 from pfb_app.pipeline.auto_people import is_evaluated
 from pfb_app.pipeline.common import submission_engine
 from pfb_app.preprocess.frames import VideoError
-from pfb_app.services import review, short_text
+from pfb_app.services import autoapprove, review, short_text
 from pfb_app.services.auto_people import set_person_excluded, short_people, unused_roster
 from pfb_app.services.content_check import add_next_part, analysed_part, next_part_group
 from pfb_app.services.review import ApprovalError, BusyError
@@ -68,8 +68,9 @@ WRITE = "自分で書く"
 CANCEL = "やめる"
 REDO = "この人だけ作り直す"
 BULK = "全員まとめて承認"
-AUTO_OPTION = "確認せずに自動で承認する"
-AUTO_CHIP = "自動で承認"
+AUTO_OPTION = autoapprove.SWITCH
+AUTO_CHIP = autoapprove.LABEL            # 自動承認（機械チェック済み・人は未確認）
+AUTO_SHORT = autoapprove.SHORT_LABEL
 GATE_LINK = "根拠を管理用の画面で直す"
 USE_SHORT = "この文で承認する"
 GROWTH_LINK, GROWTH_PAGE = "成長の記録を見る", "pages/growth.py"   # this person across works
@@ -110,9 +111,29 @@ BULK_LINE = "気になる点がなく根拠が足りている{n}人の文章を�
 BULK_DONE = "{n}人を承認しました。"
 BULK_NONE = "まとめて承認できる人はいませんでした。"
 BULK_LEFT = "まとめて承認しなかった人（一人ずつ確かめてください）"
-AUTO_HELP = ("オンにすると、これから作られる文章のうち、気になる点がなく根拠が足りているものは、"
-             "確認せずに承認されます。気になる点がある文章は、この画面で確かめます。")
-AUTO_LINE = "確認せずに自動で承認した人"
+AUTO_HELP = ("オンにすると、これから作られる文章のうち、機械チェックをすべて通ったものだけを自動承認します。"
+             "人が確認した承認とは別のもので、印は「自動承認（機械チェック済み・人は未確認）」です。"
+             "通らなかった文章は「人の確認待ち」のままで、止めた理由が出ます。"
+             "機械チェックは文章が正しいことを保証しません。人の確認の代わりではありません。")
+AUTO_LINE = "自動承認した人"
+AUTO_SUMMARY = "自動承認 {a}件／人の確認待ち {w}件"
+AUTO_ONLY_WAITING = "人の確認待ちだけを見る"
+AUTO_NONE_WAITING = "人の確認待ちの文章はありません。"
+AUTO_HELD = "自動承認しなかった理由（確かめてから承認してください）"
+AUTO_LIST = "自動承認した文章の記録"
+AUTO_REVOKE = "自動承認を取り消して人の確認待ちに戻す"
+AUTO_REVOKED = "{n}件の自動承認を取り消しました。人の確認待ちに戻っています。"
+AUTO_REVOKE_NONE = "取り消す自動承認はありません。"
+AUTO_APPLY = "いま待っている文章にも機械チェックをかける"
+AUTO_APPLIED = "機械チェックをかけました。自動承認 {a}件、人の確認待ちのまま {w}件です。"
+AUTO_CONFIRM = "人が確認して承認する"
+AUTO_REVOKE_ONE = "この人の自動承認を取り消す"
+AUTO_NOTE = ("この文章は自動承認です。機械チェックは通りましたが、人は確認していません。"
+             "渡す資料にも、そう書かれます。")
+AUTO_PASSED = ("機械チェックはすべて通っています。この画面を開く前に作られた文章なので、まだ自動承認に"
+               "なっていません。「いま待っている文章にも機械チェックをかける」で自動承認できます。")
+AUTO_REVOKE_HELP = ("自動承認だけを取り消します。人が承認したものは変わりません。"
+                    "評価する人は、この画面でいつでも文章を直して承認し直せます。")
 SKIP_EDITING = "文章を直している途中です。"
 SHORT_CAPTION = "活動の名前と、動画に映っていたことだけから作った短い文です。"
 
@@ -139,8 +160,9 @@ HELP = [
     HELP_FIX,
     "気になる点のない文章が二人分以上あるときは「全員まとめて承認」で一度に承認できます。"
     "まとめて承認しなかった人は、理由と一緒に出ます。",
-    "「確認せずに自動で承認する」をオンにすると、これから作られる気になる点のない文章は自動で承認され、"
-    "「自動で承認」の印がつきます。",
+    "「機械チェックを通った文を自動承認する」をオンにすると、これから作られる文章のうち、機械チェックを"
+    "すべて通ったものだけが自動承認され、「自動承認（機械チェック済み・人は未確認）」の印がつきます。"
+    "通らなかった文章は、止めた理由と一緒にここに出ます。自動承認は一覧から、まとめて取り消せます。",
     "全員が済むと「PDFを受け取る」へ進めます。",
     "うまくいかないとき：根拠がおかしいときは「この人だけ作り直す」か「根拠を管理用の画面で直す」を使います。",
 ]
@@ -344,26 +366,37 @@ def _pin(screen: router.Screen, unit: Unit) -> None:
 
 def _counter(unit: Unit) -> None:
     """「承認 n / 全 m」 with its bar (bars.approval_bar_html)."""
-    done = sum(1 for s in unit.students if s.state == "approved")
-    st.html(bars.approval_bar_html(done, len(unit.students), unit.label))
+    done = sum(1 for s in unit.students if s.state == "approved" and not s.auto)
+    auto = sum(1 for s in unit.students if s.auto)
+    st.html(bars.approval_bar_html(done, len(unit.students), unit.label, auto))
 
 
 def _label(student: Student) -> str:
-    word = AUTO_CHIP if student.auto else WORDS[student.state][0]
+    word = AUTO_SHORT if student.auto else WORDS[student.state][0]
     return f"{student.name}（{word}・{SHORT_CHIP}）" if student.marked else f"{student.name}（{word}）"
+
+
+WAITING_STATES = ("review", "short", "stale")   # a person's turn (人の確認待ち)
+
+
+def _only_waiting(unit: Unit) -> bool:
+    return bool(st.session_state.get(f"pfb_waiting_only_{unit.key}"))
 
 
 def _switcher(unit: Unit) -> Student:
     key = f"pfb_student_{unit.key}"
-    by_id = {s.id: s for s in unit.students}
+    shown = unit.students
+    if _only_waiting(unit):   # 「人の確認待ちだけを見る」
+        shown = [s for s in unit.students if s.state in WAITING_STATES] or unit.students
+    by_id = {s.id: s for s in shown}
     pending = st.session_state.get(_NEXT, {})
     if unit.key in pending:
         wanted = pending.pop(unit.key)
-        st.session_state[key] = wanted if wanted in by_id else _first(unit.students).id
+        st.session_state[key] = wanted if wanted in by_id else _first(shown).id
     elif st.session_state.get(key) not in by_id:
-        st.session_state[key] = _first(unit.students).id
-    if len(unit.students) == 1:
-        return unit.students[0]
+        st.session_state[key] = _first(shown).id
+    if len(shown) == 1:
+        return shown[0]
     ids = list(by_id)
     label = lambda i: _label(by_id[i])   # noqa: E731
     if len(ids) <= 6:
@@ -382,10 +415,11 @@ def _stamp_line() -> None:
 
 def _head(student: Student) -> None:
     word, chip = WORDS[student.state]
-    mark = (theme.approval_stamp(animate=False) if student.state == "approved"
-            else theme.status_chip(chip, word))
-    if student.auto:
-        mark += theme.status_chip("approved", AUTO_CHIP)
+    if student.auto:    # never the hanamaru stamp: that is a person's approval
+        mark = theme.status_chip("guess", AUTO_CHIP)
+    else:
+        mark = (theme.approval_stamp(animate=False) if student.state == "approved"
+                else theme.status_chip(chip, word))
     if student.marked:
         mark += theme.status_chip("insufficient", SHORT_CHIP)
     st.html(f'<div class="pfb-who"><span class="pfb-who__name">{escape(student.name)}さん</span>'
@@ -628,6 +662,9 @@ def _actions(screen: router.Screen, unit: Unit, student: Student, all_done: bool
             if not all_done:
                 _button(CONTINUE, "next", student, type=kind, disabled=nxt is None,
                         help=theme.L("次に確かめる参加者へ進みます"))
+            if student.auto:   # an automatic approval: a person can confirm it or put it back
+                _button(AUTO_CONFIRM, "confirm", student)
+                _button(AUTO_REVOKE_ONE, "revoke", student)
         elif state == "short":
             st.button(USE_SHORT, key=f"pfb_review_short_{student.id}_{student.run_id}",
                       type=kind, on_click=_request_short,
@@ -651,6 +688,10 @@ def _actions(screen: router.Screen, unit: Unit, student: Student, all_done: bool
         _approve_short(screen, unit, student, shown)
     elif request == "decline" and state == "short":
         _decline(screen, unit, student)
+    elif request == "confirm" and student.auto:
+        _approve(screen, unit, student)
+    elif request == "revoke" and student.auto:
+        _revoke(screen, unit, {student.id})
     elif request in ("edit", "write"):
         _open_editor(screen, unit, student)
     elif request == "redo":
@@ -696,6 +737,10 @@ def _body(screen: router.Screen, unit: Unit, student: Student, kind: Kind,
     if state in ("review", "stale"):
         for line in plain_warnings(student.run.warnings):
             st.warning(theme.L(line))
+    if student.auto:
+        st.caption(theme.L(AUTO_NOTE))
+    elif state == "review":
+        _held(screen, student)
     _actions(screen, unit, student, all_done, request, write_primary=stuck, taken=taken)
     if state == "short":
         st.caption(theme.L(DECLINE_NOTE))
@@ -803,7 +848,7 @@ def _auto_line(unit: Unit) -> None:
     auto = [s.name for s in unit.students if s.auto]
     if auto:
         names = "、".join(f"{escape(n)}さん" for n in auto)
-        st.html(f'<p class="pfb-auto">{theme.status_chip("approved", AUTO_CHIP)} '
+        st.html(f'<p class="pfb-auto">{theme.status_chip("guess", AUTO_CHIP)} '
                 f'{escape(theme.L(AUTO_LINE))}: {names}</p>')
 
 
@@ -872,13 +917,86 @@ def _set_auto(assignment_id: int, key: str) -> None:
         repo.conn.close()
 
 
+def _auto_on(screen: router.Screen) -> bool:
+    return bool(screen.snap.get_assignment(screen.progress.assignment_id).get("auto_approve"))
+
+
 def _auto_option(screen: router.Screen) -> None:
-    """The work option 「確認せずに自動で承認する」 (also on 管理用の画面), read from the work each run."""
+    """The work's switch 「機械チェックを通った文を自動承認する」 (off by default; also on 管理用の
+    画面), read from the work each run, with what it does and does not do in plain words."""
     aid = screen.progress.assignment_id
     key = f"pfb_auto_approve_{aid}"
-    st.session_state[key] = bool(screen.snap.get_assignment(aid).get("auto_approve"))
+    st.session_state[key] = _auto_on(screen)
     st.toggle(theme.L(AUTO_OPTION), key=key, on_change=_set_auto, args=(aid, key),
               help=theme.L(AUTO_HELP), disabled=screen.pending)
+
+
+def _held(screen: router.Screen, student: Student) -> None:
+    """Why a text that waits for a person was not approved by the machine checks (only when the
+    work's switch is on): every check that stopped it, in plain words."""
+    if not _auto_on(screen):
+        return
+    verdict = autoapprove.evaluate(screen.snap, student.subject, student.run,
+                                   autoapprove.Policy.from_settings(screen.settings))
+    if verdict.passed:
+        st.caption(theme.L(AUTO_PASSED))
+        return
+    rows = "".join(f"<li>{escape(theme.L(why))}</li>" for why in verdict.reasons)
+    st.html(f'<div class="pfb-held" role="note"><p class="pfb-held__head">{escape(theme.L(AUTO_HELD))}'
+            f'</p><ul>{rows}</ul></div>')
+
+
+def _revoke(screen: router.Screen, unit: Unit, only: set[int] | None = None) -> None:
+    if access.refuse_unless_edit():
+        return
+    aid = screen.progress.assignment_id
+    back = autoapprove.revoke(screen.repo, aid, only)
+    _pin(screen, unit)
+    st.session_state.setdefault(_NEXT, {})[unit.key] = back[0] if back else None
+    flash(AUTO_REVOKED.format(n=len(back)) if back else AUTO_REVOKE_NONE, raw=True)
+    st.rerun()
+
+
+def _apply(screen: router.Screen, unit: Unit) -> None:
+    if access.refuse_unless_edit():
+        return
+    approved, left = autoapprove.apply_now(screen.repo, screen.progress.assignment_id,
+                                           autoapprove.Policy.from_settings(screen.settings))
+    _pin(screen, unit)
+    flash(AUTO_APPLIED.format(a=len(approved), w=left), raw=True)
+    st.rerun()
+
+
+def _auto_panel(screen: router.Screen, unit: Unit) -> None:
+    """The automatic approvals of the work: 「自動承認 N件／人の確認待ち M件」, the filter
+    「人の確認待ちだけを見る」, the list of what was approved by the machine checks (when, which
+    checks, which policy) with 「自動承認を取り消して人の確認待ちに戻す」, and the press that runs
+    the checks on the texts that wait now. Shown only when the switch is on or an automatic
+    approval stands: with the switch off and none, the screen is as it was."""
+    on = _auto_on(screen)
+    auto = [s for s in unit.students if s.auto]
+    if not on and not auto:
+        return
+    waiting = [s for s in unit.students if s.state in WAITING_STATES]
+    st.html(f'<p class="pfb-autosummary" role="status">{theme.status_chip("guess", AUTO_SUMMARY.format(a=len(auto), w=len(waiting)))}</p>')
+    st.toggle(theme.L(AUTO_ONLY_WAITING), key=f"pfb_waiting_only_{unit.key}")
+    if _only_waiting(unit) and not waiting:
+        st.caption(theme.L(AUTO_NONE_WAITING))
+    if on and any(s.state == "review" for s in unit.students):
+        if st.button(theme.L(AUTO_APPLY), key=f"pfb_auto_apply_{unit.key}"):
+            _apply(screen, unit)
+    if auto:
+        with st.expander(theme.L(AUTO_LIST), expanded=False):
+            for item in autoapprove.listing(screen.snap, screen.progress.assignment_id):
+                passed = "、".join(c["label"] for c in item.checks if c.get("ok")) or "（記録なし。旧方式で承認）"
+                st.html(f'<dl class="pfb-evidence"><dt>人</dt><dd>{escape(item.name)}さん</dd>'
+                        f'<dt>日時</dt><dd>{escape(item.approved_at[:19].replace("T", " "))}（UTC）</dd>'
+                        f'<dt>設定の版</dt><dd>{escape(item.policy_version)}</dd>'
+                        f'<dt>通ったチェック</dt><dd>{escape(passed)}</dd>'
+                        f'<dt>文章</dt><dd>{escape(item.text)}</dd></dl>')
+            st.caption(theme.L(AUTO_REVOKE_HELP))
+            if st.button(theme.L(AUTO_REVOKE), key=f"pfb_auto_revoke_{unit.key}"):
+                _revoke(screen, unit)
 
 
 # --- the live part -----------------------------------------------------------------------------
@@ -936,6 +1054,7 @@ def render(screen: router.Screen) -> None:
             with top:
                 taken = _bulk(screen, unit, editing)
                 _auto_option(screen)
+                _auto_panel(screen, unit)
             _stamp_line()
             all_done = all(s.state in SETTLED for s in unit.students)
             request = _request_for(student)

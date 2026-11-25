@@ -25,7 +25,7 @@ from pfb_app.ui import access, keyed
 from pfb_app.ui.common import flash, get_settings, show_flash
 from pfb_app.ui.wizard import (bars, done_band, find, notify, progress_panel, router, theme,
                                waiting_panel)
-from pfb_app.ui.wizard.analysis import REVIEW_NAME, RUNNING, STOPPED, WAITING_GPU
+from pfb_app.ui.wizard.analysis import RUNNING, STOPPED, WAITING_GPU
 from pfb_app.ui.wizard.progress import RETRY, WorkProgress, all_work
 
 DELETING = "_pfb_deleting"   # the assignment id whose card shows the delete confirm area
@@ -48,8 +48,10 @@ NOTHING_YET = "まだ作業がありません"
 NOTHING_YET_GUIDE = "作業ができると、ここに並びます。見るだけの人として開いています。"
 GROWTH, GROWTH_PAGE = "成長の記録", "pages/growth.py"   # one person across works
 HELP = [
-    "「新しく始める」で動画か書類を入れると、中身を確かめて、一人一人へのフィードバックの下書きを"
-    "作ります。確かめて承認したものを、PDFで渡せます。",
+    "「新しく始める」で動画か書類を入れると、中身を確かめて、一人一人へのフィードバックの文を作ります。"
+    "できた文はすぐPDFで受け取れます。違っていたところは、あとから直せます（直した記録が残ります）。",
+    "確かめて承認した文だけをPDFに入れたいときは、作業の「活動を決める」の「作業の設定」で"
+    "「承認して出す」を選びます（前からある作業は、これまでどおり承認して出します）。",
     "作業（活動・試合）は「あなたの番」「解析中」「終わった作業」に分けて並びます。"
     "「続ける」で、いまやることの画面が開きます。",
     "「終わったら音で知らせる」をオンにすると、解析が終わったときに短い音で知らせます。"
@@ -100,7 +102,7 @@ def _card_bar(work: WorkProgress) -> str:
     if a.fraction <= 0 and not any(s.status in (RUNNING, WAITING_GPU, STOPPED) for s in a.stages):
         return ""
     current = a.current
-    name = vocab.localize(current.name if current is not None else REVIEW_NAME, work.wording)
+    name = vocab.localize(current.name if current is not None else a.review.name, work.wording)
     return bars.card_bar_html(progress_panel.held_percent(work.assignment_id, a), name,
                               progress_panel.status_of(a))
 
@@ -350,7 +352,7 @@ def render(repo: Repo) -> None:
         return
     if not works:
         with theme.step_card("はじめての作業を始めましょう",
-                             "動画か書類を入れると、一人一人へのフィードバックの下書きが"
+                             "動画か書類を入れると、一人一人へのフィードバックの文が"
                              "できます。", key="home"):
             _start_button(primary=True)
         from pfb_app.ui.wizard import sample_view    # noqa: PLC0415 (onboarding lane)

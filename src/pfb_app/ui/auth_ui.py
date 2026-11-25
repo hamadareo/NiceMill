@@ -9,8 +9,8 @@ navigation of its own (so no page of the app is reachable), either
 - 「ログイン」, with 「招待コード・再設定コードをお持ちの方」 below it,
 and stops the run.
 
-With the setting `auth_enabled: false` (open mode, ruling 2026-11-13: 「ログインなしで使える
-ように」) `resolve` answers an open administrator instead — no sign-in screen is ever shown
+With the setting `auth_enabled: false` (open mode, 2026-11-13: so that the app can be used
+without signing in) `resolve` answers an open administrator instead — no sign-in screen is ever shown
 and the account box is one quiet caption. The tables, screens and CLI below stay untouched,
 so setting the flag back to true returns the gate exactly as it was. The open session is
 served only to a browser that arrives directly from a private / tailnet / loopback address
@@ -45,7 +45,7 @@ SENT = "_pfb_auth_sent"          # the token a ticket was last handed out for
 CLEARED = "_pfb_auth_cleared"    # a stale browser cookie was asked to be cleared
 BROWSER = "_pfb_auth_browser"    # a random key of this browser session (rate limits)
 CODE = "_pfb_auth_code"          # (code, auth.Code) checked on the code form
-APP = "ナイスミル"
+APP = "NiceMill"
 SETUP_TITLE = "はじめに、管理者を登録します"
 SETUP_GUIDE = ("このアプリには、まだ誰も登録されていません。最初の管理者を登録すると、"
                "ほかの人を招待できるようになります。")
@@ -100,7 +100,7 @@ def _ip() -> str | None:
 def source_key() -> str:
     """Whom sign-in tries are counted for: the address; without one (the local proxy, or a
     connection to 127.0.0.1) this browser session. The Tailscale-User-Login header is never
-    used (ruling 2026-10-24): other users of the server reach 127.0.0.1 directly and can send
+    used (decided 2026-10-24): other users of the server reach 127.0.0.1 directly and can send
     any value. A browser key can be renewed by opening a new session, so the per-name lock
     and the 60-bit codes are the real protection (docs/accounts.md)."""
     ip = _ip()

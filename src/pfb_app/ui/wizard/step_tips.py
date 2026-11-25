@@ -18,6 +18,10 @@ and confirm (services.tips).
   shown in plain words under the box as the coach types; they advise and never refuse.
 - Every press is bound to the tips shown (their run id): a newer set is refused with a plain
   message, and the screen keeps this step.
+- A 「あとから訂正」 work (`live`, step 5 「文を読む・直す」): no approval confirms the tips; the
+  model's tips that an approval would have confirmed go into the PDF as they are
+  (services.tips.auto_ok / team_auto_ok), the screen says whether they do, and the same
+  buttons change or drop them later. No word of approval is shown.
 """
 from typing import Callable
 
@@ -44,6 +48,11 @@ EMPTY_NOTE = "この参加者のヒントは作られませんでした。渡し
 TEAM_EMPTY_NOTE = "ヒントは作られませんでした。渡したいときは、ここに書けます。"
 DONE = "確定しました。このヒントがPDFに載ります。"
 DROPPED = "確定しました。ヒントはPDFに載りません。"
+# 「あとから訂正」 works: the same presses, worded by what the PDF does (never 渡す)
+DROP_LIVE = "ヒントをPDFに入れない"
+TEAM_DROP_LIVE = "チームのヒントはPDFに入れない"
+EMPTY_NOTE_LIVE = "この参加者のヒントは作られませんでした。入れたいときは、ここに書けます。"
+TEAM_EMPTY_NOTE_LIVE = "ヒントは作られませんでした。入れたいときは、ここに書けます。"
 PENDING_REVIEW = "よければ「承認する」を押してください。承認と一緒に確定します。"
 PENDING_APPROVED = "まだ確定していません。PDFには載りません。「ヒントを確定する」を押してください。"
 TEAM_PENDING = "まだ確定していません。PDFには載りません。「このヒントで確定する」を押してください。"
@@ -58,6 +67,14 @@ TEAM_QUEUED = "チームのヒントを作っています。できると、こ�
 TEAM_ASKED = "チームのヒントを作りはじめました。"
 OUTDATED = "解析が更新されたため、ヒントは古くなりました。この人だけ作り直すと、新しいヒントができます。"
 TEAM_OUTDATED = "解析が更新されたため、チームのヒントは古くなりました。"
+# 「あとから訂正」 (live): what goes into the PDF without a press, in words without 承認
+LIVE_AUTO = "AIが作った案です。このままPDFに載ります。違っていれば、直して「ヒントを確定する」を押してください。"
+LIVE_FAULT = "気になる点があるため、このままではPDFに載りません。確かめて「ヒントを確定する」を押してください。"
+LIVE_TEXT_CHANGED = "文を直したため、このヒントはPDFに載りません。確かめて「ヒントを確定する」を押してください。"
+LIVE_REPORTED = "誤りの報告を確認中のため、このヒントはPDFに載りません。"
+LIVE_HELD = "このままではPDFに載りません。確かめて「ヒントを確定する」を押してください。"
+LIVE_TEAM_AUTO = "AIが作った案です。このままPDFに載ります。違っていれば、直して「このヒントで確定する」を押してください。"
+LIVE_TEAM_HELD = "このままではPDFに載りません。確かめて「このヒントで確定する」を押してください。"
 _BOX = "pfb_tips_box_{}_{}"       # (person id or "team", the run shown)
 
 
@@ -100,8 +117,26 @@ def _state_line(now: Tips, approved: bool, faulty: bool, pending: str) -> None:
         st.caption(theme.L(PENDING_APPROVED if approved else pending))
 
 
-def person(screen, student, pin: Callable[[], None]) -> None:
-    """The section under a person's feedback (state review or approved)."""
+def _live_line(repo, sid: int, subject_id: int, now: Tips, faulty: bool) -> None:
+    """A 「あとから訂正」 person's tips: whether the PDF carries them as they are."""
+    from pfb_app.services import corrections   # noqa: PLC0415
+    if now.confirmed:
+        st.caption(theme.L(DONE if now.items else DROPPED))
+    elif tips.auto_ok(repo, sid, subject_id, now):
+        st.caption(theme.L(LIVE_AUTO))
+    elif corrections.open_report(repo, subject_id) is not None:
+        st.caption(theme.L(LIVE_REPORTED))
+    elif faulty:
+        st.caption(theme.L(LIVE_FAULT))
+    elif now.text_changed:
+        st.caption(theme.L(LIVE_TEXT_CHANGED))
+    else:
+        st.caption(theme.L(LIVE_HELD))
+
+
+def person(screen, student, pin: Callable[[], None], *, live: bool = False) -> None:
+    """The section under a person's feedback (state review or approved; `live`: step 5 of a
+    「あとから訂正」 work)."""
     repo, sid = screen.snap, student.subject["submission_id"]
     now = tips.view(repo, sid, student.id)
     if now.stale:
@@ -111,17 +146,21 @@ def person(screen, student, pin: Callable[[], None]) -> None:
     approved = student.state == "approved"
     with keyed.expander(theme.L(tips.PERSON_TITLE), key=f"pfb_tips_open_{student.id}",
                         expanded=bool(now.items), icon=":material/lightbulb:"):
-        st.caption(theme.L(PERSON_NOTE.format(n=tips.MAX_PERSON) if now.items else EMPTY_NOTE))
+        st.caption(theme.L(PERSON_NOTE.format(n=tips.MAX_PERSON) if now.items else
+                           EMPTY_NOTE_LIVE if live else EMPTY_NOTE))
         text = _box(tips.PERSON_TITLE, student.id, now)
         shown = checks.split_tips(text)
         faulty = bool(tips.wording(repo, sid, shown))
         _faults(repo, sid, text)
-        if now.items or now.confirmed or shown:
+        if (now.items or now.confirmed or shown) and live:
+            _live_line(repo, sid, student.id, now, faulty and not now.confirmed)
+        elif now.items or now.confirmed or shown:
             _state_line(now, approved, faulty and not now.confirmed, PENDING_REVIEW)
         with keyed.container(horizontal=True, key=f"pfb_tips_actions_{student.id}"):
             confirm = st.button(theme.L(CONFIRM), key=f"pfb_tips_confirm_{student.id}_{now.run_id}",
                                 disabled=not (shown or now.items) or screen.pending)
-            drop = st.button(theme.L(DROP), key=f"pfb_tips_drop_{student.id}_{now.run_id}",
+            drop = st.button(theme.L(DROP_LIVE if live else DROP),
+                             key=f"pfb_tips_drop_{student.id}_{now.run_id}",
                              type="tertiary", disabled=not now.items or screen.pending)
     if confirm or drop:
         try:
@@ -157,8 +196,9 @@ def confirm_shown(screen, student) -> bool:
     return True
 
 
-def team(screen, unit, pin: Callable[[], None]) -> None:
-    """The group's tips under the list of people: shown once someone's text can be checked."""
+def team(screen, unit, pin: Callable[[], None], *, live: bool = False) -> None:
+    """The group's tips under the list of people: shown once someone's text can be checked
+    (`live`: step 5 of a 「あとから訂正」 work)."""
     if len(unit.submission_ids) != 1 or not any(
             s.state in ("review", "approved") for s in unit.students):
         return
@@ -179,19 +219,25 @@ def team(screen, unit, pin: Callable[[], None]) -> None:
         return
     with keyed.expander(title, key=f"pfb_tips_team_open_{sid}", expanded=bool(now.items),
                         icon=":material/groups:"):
-        st.caption(theme.L(TEAM_NOTE.format(n=tips.MAX_TEAM) if now.items else TEAM_EMPTY_NOTE))
+        st.caption(theme.L(TEAM_NOTE.format(n=tips.MAX_TEAM) if now.items else
+                           TEAM_EMPTY_NOTE_LIVE if live else TEAM_EMPTY_NOTE))
         text = _box(title, f"team{sid}", now)
         shown = checks.split_tips(text)
         _faults(repo, sid, text)
-        if now.items and any(s.state == "review" for s in unit.students):
+        if now.items and not live and any(s.state == "review" for s in unit.students):
             st.caption(theme.L(TEAM_MATERIAL))
         _ask(screen, sid, ask, pin)
-        if now.items or now.confirmed:
+        if (now.items or now.confirmed) and live:
+            st.caption(theme.L((DONE if now.items else DROPPED) if now.confirmed else
+                               LIVE_TEAM_AUTO if tips.team_auto_ok(repo, sid, now) else
+                               LIVE_TEAM_HELD))
+        elif now.items or now.confirmed:
             _state_line(now, False, False, TEAM_PENDING)
         with keyed.container(horizontal=True, key=f"pfb_tips_team_actions_{sid}"):
             confirm = st.button(theme.L(TEAM_CONFIRM), key=f"pfb_tips_team_confirm_{sid}_{now.run_id}",
                                 disabled=not shown or screen.pending)
-            drop = st.button(theme.L(TEAM_DROP), key=f"pfb_tips_team_drop_{sid}_{now.run_id}",
+            drop = st.button(theme.L(TEAM_DROP_LIVE if live else TEAM_DROP),
+                             key=f"pfb_tips_team_drop_{sid}_{now.run_id}",
                              type="tertiary", disabled=not now.items or screen.pending)
     if confirm or drop:
         try:

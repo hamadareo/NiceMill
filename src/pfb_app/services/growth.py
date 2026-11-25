@@ -37,6 +37,10 @@ MAX_NAME = 40
 _NUMBER = re.compile(r"^(?:#|背番号|no\.?)?\s*(\d+)(番|号車)?$", re.IGNORECASE)
 _NOTED_NUMBER = re.compile(r"^(?:#|背番号|no\.?)?\s*\d+(?:番|号車)?\s*\(.*\)$", re.IGNORECASE)
 APPROVED_ONLY = "文章を承認した人をつなげます。"
+# 「あとから訂正」 works: the newest text unless it is reported wrong (corrections.usable_run)
+LIVE_ONLY = "文がまだない人と、誤りの報告を確認中の人は、つなげません。"
+EITHER_ONLY = ("つなげるのは、承認した文章のある人です（「あとから訂正」の作業では、"
+               "誤りの報告を確認中でない文のある人です）。")
 SAME_WORK = "同じ作業の人どうしはつなげません。"
 OTHER_RECORD = "二人はそれぞれ別の記録に入っています。つなぎ直すときは、記録の画面で外してからつないでください。"
 _PREFIXES = sorted({w.person_prefix for w in vocab.WORDS.values()} | {"参加者", "選手"},
@@ -54,7 +58,8 @@ class Member:
     submission_id: int
     assignment_id: int
     name: str
-    approved: bool               # the newest feedback text is the approved one (linkable)
+    approved: bool               # the newest feedback text is the approved one (linkable);
+                                 # a 「あとから訂正」 work: the newest text, not reported wrong
     work_title: str
     group_label: str | None      # the group's name when the work has several groups
     when: str                    # the work's date, 「2026年9月1日」
@@ -144,8 +149,8 @@ def members(repo: Repo, subject_ids=None) -> list[Member]:
 def suggestions(repo: Repo, *, person_id: int | None = None, subject_id: int | None = None,
                 everyone: list[Member] | None = None) -> list[Suggestion]:
     """The open suggestions (all, or those that would change `person_id`'s record or involve
-    `subject_id`), in date order of the person to add. Only people with an approved text,
-    never two people of one work. `everyone`: members(repo) when the caller has it."""
+    `subject_id`), in date order of the person to add. Only people with an approved text (in a
+    「あとから訂正」 work: the newest text, not reported wrong), never two people of one work. `everyone`: members(repo) when the caller has it."""
     everyone = members(repo) if everyone is None else everyone
     declined = repo.growth_declined()
     by_key: dict[str, list[Member]] = {}
@@ -206,8 +211,11 @@ def _check(repo: Repo, subject_ids: list[int], inside: list[int] = ()) -> None:
     """ValueError unless every one of `subject_ids` has an approved text (APPROVED_ONLY), and
     none of them shares a work with another of them or with `inside` (SAME_WORK)."""
     found = {m.subject_id: m for m in members(repo, [*subject_ids, *inside])}
-    if any(not (found.get(sid) and found[sid].approved) for sid in subject_ids):
-        raise ValueError(APPROVED_ONLY)
+    missing = [sid for sid in subject_ids if not (found.get(sid) and found[sid].approved)]
+    if missing:
+        rows = {r["subject_id"]: r for r in repo.growth_member_rows(missing)}
+        raise ValueError(LIVE_ONLY if all(rows.get(sid, {}).get("live") for sid in missing)
+                         else APPROVED_ONLY)
     works = [found[sid].assignment_id for sid in [*subject_ids, *inside] if sid in found]
     if len(works) != len(set(works)):
         raise ValueError(SAME_WORK)

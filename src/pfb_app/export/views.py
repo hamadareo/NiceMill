@@ -27,6 +27,8 @@ GROWTH_TITLE = "成長のまとめ"
 GROWTH_CHART = "観点ごとのよかった場面の数"
 GROWTH_CHART_NOTE = "数字は回数です。色が濃いほど多く記録されています。"
 GROWTH_FOOTER = "このページは、承認した文章と、その文章のもとになった場面の数からまとめています。"
+GROWTH_FOOTER_LIVE = ("このページは、作業ごとの文章と、その文章のもとになった場面の数からまとめています。"
+                      "AIが作成した文章は、人の確認を経ていない場合があります（作業ごとに確認状況を書いています）。")
 TIMELINE_TITLE = "時間の流れ"
 COURT_TITLE = "コートのどこにいたか"
 
@@ -36,6 +38,15 @@ def initial(name: str) -> str:
     (「#7」 -> 「7」)."""
     m = re.search(r"[^\W_]", name or "")
     return m.group(0) if m else "・"
+
+
+def _mono(sheet: Sheet) -> str:
+    """The monogram of a person without a photo: the first letter of the name, or (draft export,
+    a jersey label) the jersey digits, 「?」 when the number is unknown."""
+    if not sheet.jersey:
+        return initial(sheet.name)
+    m = re.search(r"\d+", sheet.jersey)
+    return m.group(0) if m else "?"
 
 
 def distance_text(metres: float | None) -> str | None:
@@ -96,13 +107,18 @@ def person(report: Report, sheet: Sheet, audience: str, *, accent: str = charts.
         svg = charts.court(sheet.court_points, title=COURT_TITLE, width=width * 0.38)
         court = Markup(svg) if svg else None
     return {
-        "sheet": sheet, "name": sheet.name, "initial": initial(sheet.name), "text": sheet.text,
+        "sheet": sheet, "name": sheet.shown, "initial": _mono(sheet),
+        "jersey": bool(sheet.jersey), "jersey_id": sheet.jersey_id, "text": sheet.text,
         "short": short,
         "tips": [] if short else sheet.tips,
         "team_tips": [] if short else sheet.team_tips,
         "team_title": report.team_tips_title,
         "photo": sheet.photo,
-        "footer": labels.footer_line(report.work, report.video, auto=sheet.auto),
+        "footer": ("" if sheet.draft and audience == "handout" else
+               labels.live_footer(sheet.live_version) if sheet.live else
+                   labels.footer_line(report.work, report.video, auto=sheet.auto, draft=sheet.draft)),
+        "draft": sheet.draft, "live": sheet.live, "live_label": sheet.live_label,
+        "live_lines": sheet.live_lines, "ident_note": sheet.ident_note,
         "pictures": [{"m": m, "image": m.picture or m.thumb, "caption":
                       caption(report, sheet, m.what, audience)} for m in pictures],
         "moments_text": [] if audience == "evaluator" else [
@@ -121,13 +137,13 @@ def person(report: Report, sheet: Sheet, audience: str, *, accent: str = charts.
 def summary(report: Report, *, accent: str = charts.BAR, width: float = 640) -> dict:
     """The evaluator's cover charts: good moments per person and minutes on screen per
     person, each sorted by its own value (two charts, never two axes)."""
-    people = report.sheets
-    by_count = sorted((s for s in people if s.counted), key=lambda s: (-s.counted, s.name))
-    by_time = sorted((s for s in people if s.on_screen_s), key=lambda s: (-s.on_screen_s, s.name))
-    moments = charts.bar_chart([Bar(s.name, s.counted) for s in by_count],
+    people = [s for s in report.sheets if not s.ident_blocked]   # 同一人物の確認
+    by_count = sorted((s for s in people if s.counted), key=lambda s: (-s.counted, s.shown))
+    by_time = sorted((s for s in people if s.on_screen_s), key=lambda s: (-s.on_screen_s, s.shown))
+    moments = charts.bar_chart([Bar(s.shown_long, s.counted) for s in by_count],
                                title="よかった場面の数", unit="回", width=width * 0.48,
                                row_h=20, thick=10, colour=accent)
-    minutes = charts.bar_chart([Bar(s.name, round(s.on_screen_s / 60, 1)) for s in by_time],
+    minutes = charts.bar_chart([Bar(s.shown_long, round(s.on_screen_s / 60, 1)) for s in by_time],
                                title="映っていた時間", unit="分", width=width * 0.48,
                                row_h=20, thick=10, colour=accent,
                                value_text=lambda v: f"{v:.1f}分")
@@ -137,8 +153,8 @@ def summary(report: Report, *, accent: str = charts.BAR, width: float = 640) -> 
 
 def contact(report: Report, sheet: Sheet) -> dict:
     top = sheet.top_category(report.categories)
-    return {"sheet": sheet, "photo": sheet.photo, "name": sheet.name,
-            "initial": initial(sheet.name), "count": sheet.counted,
+    return {"sheet": sheet, "photo": sheet.photo, "name": sheet.shown,
+            "initial": _mono(sheet), "count": sheet.counted, "jersey_id": sheet.jersey_id,
             "top": None if top is None else {"label": top.label,
                                              "glyph": Markup(charts.glyph(top, 11))},
             "chips": sheet.chips, "reason": sheet.reason}
@@ -179,8 +195,9 @@ def growth_page(rec, *, accent: str = charts.BAR, width: float = 640) -> dict:
         points = "・".join(f"{label} {n}回" for label, n in e.counts.items())
         works.append({"when": e.when, "title": e.title, "group": e.group_label,
                       "activity": e.activity, "points": points,
-                      "quote": e.quotes[0] if e.quotes else None})
+                      "quote": e.quotes[0] if e.quotes else None,
+                      "state": f"AIが作成した文・確認状況：{e.live_label}" if e.live else None})
     return {"title": GROWTH_TITLE, "lines": growth.statements(rec),
             "chart": Markup(svg) if svg else None, "chart_title": GROWTH_CHART,
-            "chart_note": GROWTH_CHART_NOTE,
-            "works": works, "footer": GROWTH_FOOTER, "accent": accent}
+            "chart_note": GROWTH_CHART_NOTE, "works": works,
+            "footer": GROWTH_FOOTER_LIVE if rec.live else GROWTH_FOOTER, "accent": accent}

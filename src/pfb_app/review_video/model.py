@@ -5,7 +5,10 @@ from dataclasses import dataclass, field
 
 from pfb_app.export.explainer_video import Source
 
-DRAFT_NOTICE = "AIの下書きです。評価する人が確認してから渡します。"
+# DRAFT_NOTICE never says 承認, 渡す or 下書き: an output may go out before anyone checked it
+# (「あとから訂正」). BAND_NOTE, EVAL_AI_NOTE and the player still say 「AIの下書き」 (2026-11-23:
+# only this notice was changed)
+DRAFT_NOTICE = "AIが作成した文です。違っていれば、あとから直せます。"
 CHECK_NOTE = "AIの判定・要確認"
 SUSPECT_NOTE = "人物が別人かも・要確認。別の人の動きかもしれません。"
 NUMBER_NOTE = "背番号はAIが読んだもの。違っていたら直してください。"
@@ -16,7 +19,7 @@ BAND_NOTE = "AIの下書き・背番号は未検証"
 BAND_NOTE_VERIFIED = "AIの下書き・要確認"
 NO_MARK_NOTE = "「別の人かも」の印が無くても、別の人でないとは限りません（判定の材料がない場合があります）。"
 CHECKED = {True: "人物の照合：番号の時系列で確かめました", False: "人物の照合：材料がなく、確かめていません"}
-FIX_NOTE = "直すときは、ナイスミルの「人物と参加者の対応づけ」で直します。"
+FIX_NOTE = "直すときは、NiceMillの「人物と参加者の対応づけ」で直します。"
 # the number-change note says 「読み取った」 only while the number reading has passed the check; until then
 # it says what the AI saw, with 「？」 like every other number on screen
 CHANGE_NOTE = ("この付近で、AIが読んだ背番号が {a}番？ から {b}番？ に変わったように見えます（読み取りは未検証）。"

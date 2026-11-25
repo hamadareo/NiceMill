@@ -8,7 +8,8 @@
 @page {
   size: A4;
   margin: 15mm 16mm 17mm;
-  @bottom-left { content: {% if brand_mark %}url("{{ src(brand_mark) }}") "\2002{{ brand_name }}\2003" {% endif %}{% block footer_content %}"{{ footer }}"{% endblock %}; font-family: "Noto Sans CJK JP"; font-size: 7.5pt; color: #59606b; }
+  @bottom-left { content: {% if brand_mark %}url("{{ src(brand_mark) }}") "\2002{{ brand_name }}"{% else %}"{{ brand_name }}"{% endif %}; width: 34mm; font-family: "Noto Sans CJK JP"; font-weight: bold; font-size: 10pt; color: {{ brand_colour }}; vertical-align: middle; }
+  @bottom-center { content: {% block footer_content %}"{{ footer }}"{% endblock %}; width: 118mm; font-family: "Noto Sans CJK JP"; font-size: 7.5pt; color: #59606b; text-align: left; }
   @bottom-right { content: counter(page) " / " counter(pages); font-family: "Noto Sans CJK JP"; font-size: 7.5pt; color: #59606b; }
 }
 {% endif %}
@@ -64,6 +65,37 @@ ul.moment-list .why { display: block; color: #59606b; font-size: 9pt; }
 ul.growth-lines { margin: 0 0 4mm; padding-left: 5mm; font-size: 11pt; }
 ul.growth-lines li { margin: 0 0 1.4mm; }
 .footline { string-set: footer attr(data-footer); }
+.compact .masthead { padding-bottom: 1.5mm; margin-bottom: 2.5mm; }
+.compact .masthead .logo { height: 7mm; }
+.compact .live-banner { border: 1pt solid #1c5cab; background: #eef4fc; color: #14407a; font-size: 9.5pt; line-height: 1.5; padding: 2mm 3mm; margin: 0 0 3mm; border-radius: 2mm; }
+.compact .live-banner { font-size: 8.5pt; padding: 1.2mm 2.4mm; margin: 0 0 2mm; }
+.live-record p { margin: 0.4mm 0; }
+.draft-banner { font-size: 10pt; padding: 1.6mm 3mm; margin: 0 0 2.5mm; }
+.compact .draft-note { display: none; }
+.compact .person { margin-bottom: 2.5mm; }
+.compact .photo, .compact .monogram { width: 18mm; height: 18mm; margin-right: 4mm; border-radius: 3mm; }
+.compact .monogram { line-height: 18mm; font-size: 16pt; }
+.compact h1.name { font-size: 18pt; }
+.compact .person .sub { margin-top: 0.5mm; font-size: 8.5pt; }
+.compact .letter { font-size: 10.5pt; line-height: 1.65; padding-left: 4mm; margin: 0 0 2.5mm; max-width: none; }
+.compact h2 { font-size: 10pt; margin: 2.5mm 0 1.2mm; }
+.compact .moments figure.moment, .compact .moments.n4 figure.moment, .compact .moments.n3 figure.moment, .compact .moments.n2 figure.moment, .compact .moments.n1 figure.moment { width: 41mm; margin: 0 4.4mm 1.5mm 0; }
+.compact .moments figure.moment:nth-child(4n) { margin-right: 0; }
+.compact figcaption { margin-top: 1mm; }
+.compact .what { font-size: 8pt; line-height: 1.4; }
+.compact .when { font-size: 7.5pt; }
+.compact .num { width: 4.4mm; height: 4.4mm; line-height: 4.4mm; font-size: 7pt; margin-right: 1.6mm; }
+.compact .note { font-size: 7.5pt; margin-top: 0.5mm; }
+.compact .chart svg { max-height: 44mm; width: auto; max-width: 100%; }
+.compact .pair > .block + .block { margin-left: 5mm; }
+.compact ul.tip-list { margin-bottom: 2mm; }
+.compact ul.tip-list li { font-size: 9.5pt; line-height: 1.5; margin: 0 0 0.8mm; }
+.compact .credit { margin-top: 2.5mm; padding-top: 1mm; font-size: 6.5pt; line-height: 1.35; }
+.draft-banner { border: 1.2pt solid #b3261e; background: #fdecea; color: #7a1710; font-weight: bold; font-size: 13pt; padding: 3mm 4mm; margin: 0 0 5mm; border-radius: 2mm; }
+.draft-note { font-size: 9.5pt; color: #7a1710; background: #fdecea; border-radius: 2mm; padding: 2mm 3mm; margin: 0 0 5mm; }
+.chip.draft { border-color: #b3261e; color: #7a1710; background: #fdecea; font-weight: bold; }
+.credit { margin-top: 8mm; padding-top: 2mm; border-top: 0.5pt solid #e6e9ee; font-size: 7.5pt; color: #59606b; }
+.credit p { margin: 0.6mm 0; }
 {% block style %}{% endblock %}
 {% if screen %}
 html { font-size: 16px; }

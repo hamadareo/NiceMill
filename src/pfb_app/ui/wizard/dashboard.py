@@ -65,6 +65,15 @@ NOT_ALLOWED = "このまとめは、管理者と評価する人が見られま�
 TWIN = "表で見る"
 PAGE_SIZE = 30
 WAITING_CHIP = "承認前"
+# 「あとから訂正」 (board.live): the check state of the newest text, in words without 承認
+LIVE_HELP = ("数字は、PDFの文と同じ記録から出しています（AIが作成した文。訂正した人は訂正した文）。"
+             "誤りの報告を確認中の人の文は出していません。")
+LIVE_NO_TEXT = "文章は出していません（{status}）。"
+LIVE_NONE = "文章はまだありません。"
+LIVE_ABOUT = ("よかった場面：よかった点として判断された場面です。いまの文（AIが作成した文。"
+              "訂正した人は訂正した文）のもとになった場面です。")
+LIVE_CHIP_ABOUT = ("見どころと場面の一覧で「誤りの報告あり・確認中」とあるものは、"
+                   "誤りの報告を確認中の文のもとになった場面です。")
 REMOVED = ("この作業の動画は消してあります。映っていた時間と位置の記録は動画といっしょに消えたため、"
            "残っている記録（よかった場面と文章）だけを出しています。場面の動画は見られません。")
 RETRACK = "人の追跡をやり直しているため、映っていた時間と位置は出していません。"
@@ -234,7 +243,7 @@ def render(repo: Repo) -> None:
     if person is None:
         _highlights(repo, board)
     _about(board)
-    theme.help_expander(HELP)
+    theme.help_expander(HELP[:-1] + [LIVE_HELP] if board.live else HELP)
 
 
 def _filters(repo: Repo, aid: int, found: list[tuple[int, str]]) -> tuple[int, int | None]:
@@ -389,6 +398,8 @@ def _person(board: dash.Board, p: dash.Person) -> None:
         _note(NO_MOMENTS)
     if p.text:
         st.html(f'<blockquote class="pfb-growth-quote">{escape(p.text)}</blockquote>')
+    elif board.live:       # 「あとから訂正」: the check state, never 承認
+        _note(LIVE_NO_TEXT.format(status=p.status) if p.status else LIVE_NONE)
     else:
         _note(f"文章はまだ承認されていません（{p.status}）。")
 
@@ -433,7 +444,8 @@ def _glyph(category) -> str:
 
 def _moment_row(repo: Repo, board: dash.Board, m: dash.Moment, key: str) -> None:
     kind = m.category.label if m.category else "種類がわからない場面"
-    chip = "" if m.approved else f'<span class="pfb-dash-row__chip">{WAITING_CHIP}</span>'
+    word = (m.state if not m.approved else "") if board.live else ("" if m.approved else WAITING_CHIP)
+    chip = f'<span class="pfb-dash-row__chip">{escape(word)}</span>' if word else ""
     st.html(f'<p class="pfb-dash-row"><span class="pfb-dash-row__when">{escape(m.when)}</span>{chip}'
             f'<span class="pfb-dash-row__who">{escape(m.name)}</span>{_glyph(m.category)}'
             f'{escape(kind)}<span class="pfb-dash-row__what">{escape(m.what)}</span></p>')
@@ -587,6 +599,7 @@ def _about(board: dash.Board) -> None:
     lines = [
         "映っていた時間：人の枠が記録された時間です（1.5秒より短いすき間はつなげています）。"
         "画面に映っていた時間で、出ていた時間とはかぎりません。カメラが何台あっても、重なる時間は1回だけ数えます。",
+        LIVE_ABOUT if board.live else
         "よかった場面：よかった点として判断された場面です。承認前の参加者は、いまの下書きのもとになった場面です。",
         "評価した参加者だけを数えています。評価しない人、データを消した人は出てきません。",
     ]
@@ -598,7 +611,8 @@ def _about(board: dash.Board) -> None:
                      "カメラが動くと、同じ場所でも画面の中の位置は変わります。")
     if board.several_cameras:
         lines.append(dash.SEVERAL_CAMERAS + "。カメラごとの時間は人ごとの表のCSVにあります。")
-    lines.append("見どころと場面の一覧で「承認前」とあるものは、まだ承認していない文章のもとになった場面です。")
+    lines.append(LIVE_CHIP_ABOUT if board.live else
+                 "見どころと場面の一覧で「承認前」とあるものは、まだ承認していない文章のもとになった場面です。")
     if board.untyped:
         lines.append(f"種類がわからない場面（{board.untyped}件）は、種類ごとの数に入れていません。")
     if board.media_removed:

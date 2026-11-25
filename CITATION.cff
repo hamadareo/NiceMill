@@ -12,7 +12,7 @@ authors:
 abstract: >-
   NiceMill writes per-person positive-feedback texts from collaborative-interaction videos with a
   local vision-language model. Each text is shown with the video scenes it is based on, and a
-  person checks it before it is finalized.
+  person can correct it afterwards; the corrections are kept as a record.
   (Japanese title of the paper: ローカルVLMを用いた協働インタラクション動画からのポジティブ・フィードバック生成)
 repository-code: "https://github.com/hamadareo/NiceMill"
 license: Apache-2.0

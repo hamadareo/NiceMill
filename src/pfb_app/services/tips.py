@@ -25,6 +25,14 @@ The model's tips are stored by the worker (pipeline.tips) as `Stage.tips` runs: 
 
 Only an approved person's PDF page is made, so unconfirmed tips are never printed; the PDF
 reads these functions and nothing else.
+
+A 「あとから訂正」 work (correct_later) has no approval to confirm the model's tips with: its PDF
+prints, with `live`, the tips an approval would have confirmed (`auto_ok`: the model's own
+current tips, made for the newest text, not after the coach's deletion, without a wording
+fault), and not while the person's text is reported wrong (誤りの報告あり・確認中). The group's
+tips likewise (`team_auto_ok`: the model's current tips without a fault, and none of the texts
+they stand on is reported wrong). The coach's own confirmation or deletion always wins, and
+step 5 「文を読む・直す」 shows the tips to change them later, as the texts are.
 """
 import logging
 from dataclasses import dataclass, field
@@ -38,9 +46,9 @@ from pfb_app.services import review
 from pfb_app.services.review import BusyError
 from pfb_app.storage.db import Repo
 
-__all__ = ["AUDIT", "MAX_PERSON", "MAX_TEAM", "NEWER", "Tips", "TipsError", "can_ask_team",
-           "confirm", "confirm_on_approval", "for_pdf", "queue_team", "team_for_pdf",
-           "team_queued", "team_title", "view", "wording"]
+__all__ = ["AUDIT", "MAX_PERSON", "MAX_TEAM", "NEWER", "Tips", "TipsError", "auto_ok",
+           "can_ask_team", "confirm", "confirm_on_approval", "for_pdf", "queue_team",
+           "team_auto_ok", "team_for_pdf", "team_queued", "team_title", "view", "wording"]
 
 log = logging.getLogger(__name__)
 
@@ -172,9 +180,10 @@ def confirm(repo: Repo, submission_id: int, subject_id: int | None, text_or_line
                      confirmed=not draft)
 
 
-def _after_deletion(repo: Repo, submission_id: int, subject_id: int, run: StageRun) -> bool:
-    """The coach's last decision on this person's tips (before `run`) was a deletion, made
-    for this same analysis: new tips are the coach's to confirm."""
+def _after_deletion(repo: Repo, submission_id: int, subject_id: int | None,
+                    run: StageRun) -> bool:
+    """The coach's last decision on this person's (or the group's) tips (before `run`) was a
+    deletion, made for this same analysis: new tips are the coach's to confirm."""
     earlier = [r for r in repo.run_history(submission_id, Stage.tips, None, subject_id)
                if r.id != run.id and r.version < run.version and r.source == "teacher"]
     if not earlier:
@@ -206,16 +215,54 @@ def confirm_on_approval(repo: Repo, subject_id: int) -> bool:
         return False
 
 
-def for_pdf(repo: Repo, submission_id: int, subject_id: int) -> list[str]:
-    """The person's confirmed tips that are current: what their handout prints."""
+def auto_ok(repo: Repo, submission_id: int, subject_id: int, now: Tips | None = None) -> bool:
+    """The model's own current tips of the person that an approval would confirm
+    (confirm_on_approval's bar), and the person's text is not reported wrong: what a
+    「あとから訂正」 PDF prints without the coach's press."""
+    from pfb_app.services import corrections   # noqa: PLC0415 - corrections imports review
+    now = now or view(repo, submission_id, subject_id)
+    if now.run is None or now.run.source != "model" or not now.items or now.stale:
+        return False
+    if now.text_changed or _after_deletion(repo, submission_id, subject_id, now.run):
+        return False
+    if corrections.open_report(repo, subject_id) is not None:
+        return False
+    return not wording(repo, submission_id, now.items)
+
+
+def team_auto_ok(repo: Repo, submission_id: int, now: Tips | None = None) -> bool:
+    """The group's model tips that a 「あとから訂正」 PDF prints without the coach's press:
+    current, without a wording fault, not after the coach's deletion, and none of the texts
+    they stand on (their feedback runs) is reported wrong."""
+    from pfb_app.services import corrections   # noqa: PLC0415
+    now = now or view(repo, submission_id, None)
+    if now.run is None or now.run.source != "model" or not now.items or now.stale:
+        return False
+    if _after_deletion(repo, submission_id, None, now.run):
+        return False
+    for rid in now.run.upstream_run_ids or []:
+        up = repo.get_run(rid)
+        if (up is not None and up.stage == Stage.pfb and up.subject_id is not None
+                and corrections.open_report(repo, up.subject_id) is not None):
+            return False
+    return not wording(repo, submission_id, now.items)
+
+
+def for_pdf(repo: Repo, submission_id: int, subject_id: int, *, live: bool = False) -> list[str]:
+    """The person's confirmed tips that are current: what their handout prints (`live`: a
+    「あとから訂正」 work, which also prints the tips `auto_ok` allows)."""
     now = view(repo, submission_id, subject_id)
-    return now.items if now.confirmed else []
+    if now.confirmed:
+        return now.items
+    return now.items if live and auto_ok(repo, submission_id, subject_id, now) else []
 
 
-def team_for_pdf(repo: Repo, submission_id: int) -> list[str]:
-    """The group's confirmed tips that are current."""
+def team_for_pdf(repo: Repo, submission_id: int, *, live: bool = False) -> list[str]:
+    """The group's confirmed tips that are current (`live`: also those `team_auto_ok` allows)."""
     now = view(repo, submission_id, None)
-    return now.items if now.confirmed else []
+    if now.confirmed:
+        return now.items
+    return now.items if live and team_auto_ok(repo, submission_id, now) else []
 
 
 def team_queued(repo: Repo, submission_id: int) -> bool:

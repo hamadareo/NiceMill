@@ -25,6 +25,12 @@ and status; the work's current step is the earliest step any submission still ne
 
 - How far the analysis has got: each SubProgress and the WorkProgress carry an `analysis`
   (ui/wizard/analysis.py: stages, percentages, the review line), derived from the same rows.
+- 「あとから訂正」 works (review_mode correct_later, `WorkProgress.live`): nothing waits for an
+  approval. Step 5 is 「文を読む・直す」 (LIVE_STEP); once the texts are there the group is the
+  coach's turn there (LIVE_READY) and the PDF step can be opened at once; after the PDF is
+  received the work is complete, until a text or its check state changes (a newer feedback
+  run, a correction or a report in text_versions): then the group is at the PDF step again
+  (LIVE_REISSUE, 「再出力が必要」).
 
 One call reads the assignment's rows once (`_Snapshot`), and a complete work whose rows have
 not changed since it was last derived is answered from a small cache. A screen builds one
@@ -54,6 +60,13 @@ TRACKING_STEPS = ["活動を決める", "動画を入れる", "人を確かめ�
 PAPER_STEPS = ["活動を決める", "動画を入れる", "参加者を確認", "解析を待つ", "確認して承認",
                "PDFを受け取る"]
 DOCUMENT_STEPS = ["活動を決める", "書類を入れる", "解析を待つ", "確認して承認", "PDFを受け取る"]
+# 「あとから訂正」 works: step 5's name and the reasons that replace the approval waits
+LIVE_STEP = "文を読む・直す"
+LIVE_READY = "{n}人の文ができました。読んで、違っていれば直せます。PDFもすぐ受け取れます"
+LIVE_NONE = "文ができた人がいません。「文を読む・直す」で、一人ずつ書けます"
+LIVE_REISSUE = "PDFを受け取ったあとで文が変わりました。PDFを受け取り直してください（再出力が必要）"
+LIVE_DONE = "PDFを受け取りました"
+CORRECT_LATER = "correct_later"   # services.corrections.CORRECT_LATER (review_mode)
 VIDEO_KEYS = ["assignment", "files", "people", "wait", "review", "pdf"]
 DOCUMENT_KEYS = ["assignment", "files", "wait", "review", "pdf"]
 SUB_STEPS = ("assignment", "people", "wait", "review", "pdf")
@@ -168,6 +181,13 @@ class WorkProgress:
     domain: str = "school"
     analysis: Analysis | None = None   # the groups' analyses together (analysis.py)
     wording: str = "general"   # the work's profile: the key of its screen words (vocab.WORDS)
+    mode: str = "approve"      # review_mode: approve or correct_later (「あとから訂正」)
+    ready: int = 0             # 「あとから訂正」: people with a text the PDF can carry
+
+    @property
+    def live(self) -> bool:
+        """A 「あとから訂正」 work: no approvals, the newest texts go out (corrections)."""
+        return self.mode == CORRECT_LATER
 
     @property
     def progress_fraction(self) -> float:
@@ -179,12 +199,13 @@ class WorkProgress:
 
     def reachable(self, step: int) -> bool:
         """Steps up to the furthest one any submission has reached (and done ones) can be
-        opened; the PDF step as soon as one student is approved."""
+        opened; the PDF step as soon as one student is approved (「あとから訂正」: as soon as
+        one person has a text)."""
         if not 1 <= step <= len(self.keys):
             return False
         if step <= max(self.current, self.furthest) or step in self.done:
             return True
-        return self.keys[step - 1] == "pdf" and self.approved > 0
+        return self.keys[step - 1] == "pdf" and (self.approved > 0 or (self.live and self.ready > 0))
 
 
 # --- a per-call, read-only view of one assignment ---
@@ -215,6 +236,14 @@ class _Snapshot(Repo):
                 "SELECT j.* FROM jobs j JOIN submissions s ON j.submission_id = s.id"
                 f" WHERE s.assignment_id=? AND j.stage NOT IN ({_SIDE_MARKS})"
                 " ORDER BY j.id", (aid, *SIDE_STAGES))]
+            # 「あとから訂正」: when each person's corrections and reports last changed (an
+            # approve work never reads them: its reads stay as they were)
+            versions = dict(self.conn.execute(
+                "SELECT v.subject_id, MAX(v.created_at) FROM text_versions v"
+                " JOIN subjects t ON v.subject_id = t.id"
+                " JOIN submissions s ON t.submission_id = s.id"
+                " WHERE s.assignment_id=? GROUP BY v.subject_id", (aid,)).fetchall()
+            ) if assignment.get("review_mode") == CORRECT_LATER else {}
             # read in the same transaction as the data, so a cache key made from it matches it
             self.signature = (_signature(self, assignment)
                               if assignment.get("pdf_downloaded_at") else None)
@@ -223,6 +252,7 @@ class _Snapshot(Repo):
                 self.conn.execute("COMMIT")
         self.assignment = assignment
         self.submissions = subs
+        self._versions: dict[int, str] = versions
         self._subs = {s["id"]: s for s in subs}
         self._subjects = {s["id"]: s for s in subjects}
         self._subjects_of = defaultdict(list)
@@ -320,6 +350,10 @@ class _Snapshot(Repo):
 
     def last_activity(self, submission_id: int) -> str:
         return self._last[submission_id]
+
+    def last_correction(self, subject_id: int) -> str:
+        """When the person's last correction or report was recorded ("" for none)."""
+        return self._versions.get(subject_id) or ""
 
 
 def snapshot(repo: Repo, assignment_id: int) -> _Snapshot:
@@ -420,6 +454,8 @@ class _Sub:
     settled: bool = False    # every student approved or with too little evidence
     summable: int = 0        # students waiting for approval, when the reason says only that
     reached: str | None = None   # a later step it can already be opened at (see _submission)
+    ready: int = 0           # 「あとから訂正」: people with a text the PDF can carry
+    last_change: str = ""    # 「あとから訂正」: the latest text or correction of its people
 
 
 def _make(sub: dict, engine: str, step: str, status: str, reason: str,
@@ -460,6 +496,7 @@ class _Ctx:
     def __init__(self, repo: _Snapshot, assignment: dict, now: datetime):
         self.repo, self.assignment, self.now = repo, assignment, now
         self.kind = Kind(assignment["kind"])
+        self.live = assignment.get("review_mode") == CORRECT_LATER
 
     def stuck(self, sub: dict, engine: str, step: str, reason: str,
               action: str | None = None, **kw) -> _Sub:
@@ -552,13 +589,33 @@ def _paper_identity_missing(ctx: _Ctx, sub: dict, engine: str) -> _Sub | None:
     return None
 
 
+def has_text(run: StageRun | None) -> bool:
+    """「あとから訂正」: the run carries a text the PDF prints (as export.sheets reads it)."""
+    return run is not None and run.status == "ok" and bool((run.output or {}).get("pfb"))
+
+
 def _students(ctx: _Ctx, sub: dict) -> tuple[list[dict], dict, dict]:
     """(the students, {id: status}, the counts _Sub carries: approved, total and the time of
-    the latest approval)."""
+    the latest approval; for 「あとから訂正」 also ready and last_change)."""
     repo, kind = ctx.repo, ctx.kind
     subjects = [s for s in repo.list_subjects(sub["id"])
                 if kind == Kind.document or is_evaluated(s)]
     statuses = {s["id"]: review.subject_status(repo, s["id"]) for s in subjects}
+    if ctx.live:      # nothing is approved in a 「あとから訂正」 work
+        runs = {s["id"]: repo.latest_run(sub["id"], Stage.pfb, subject_id=s["id"])
+                for s in subjects}
+        last = {s["id"]: max(runs[s["id"]].created_at if runs[s["id"]] else "",
+                             repo.last_correction(s["id"])) for s in subjects}
+        downloaded = ctx.assignment.get("pdf_downloaded_at") or ""
+        later = {i for i, when in last.items() if downloaded and when > downloaded}
+        if later:      # a change after the PDF counts only for people the PDF carries (in_pdf)
+            from pfb_app.services import corrections   # noqa: PLC0415
+            keep = corrections.in_pdf(repo, ctx.assignment["id"], later)
+            last = {i: when for i, when in last.items() if i not in later or i in keep}
+        return subjects, statuses, dict(
+            approved=0, total=len(subjects), last_approved_at="",
+            ready=sum(1 for r in runs.values() if has_text(r)),
+            last_change=max(last.values(), default=""))
     approved = [i for i, st in statuses.items() if st == SubjectStatus.approved]
     counts = dict(approved=len(approved), total=len(subjects),
                   last_approved_at=max((s["approved_at"] or "" for s in subjects
@@ -598,6 +655,11 @@ def _results(ctx: _Ctx, sub: dict, engine: str) -> _Sub:
         return ctx.stuck(sub, engine, "wait",
                          "解析が最後まで進んでいません。管理用の画面で確かめてください",
                          **counts)
+    if ctx.live:       # no approvals: the texts are there to read, and to receive as a PDF
+        if not counts["ready"]:
+            return _make(sub, engine, "review", "your_turn", LIVE_NONE, **counts)
+        return _make(sub, engine, "review", "your_turn", LIVE_READY.format(n=counts["ready"]),
+                     settled=True, **counts)
     in_review = [i for i, st in statuses.items() if st == SubjectStatus.review]
     if in_review:
         n = len(in_review)
@@ -643,6 +705,9 @@ def _ready_while_writing(ctx: _Ctx, sub: dict, engine: str, active: list[dict]) 
         if s["id"] in writing:
             continue
         run = repo.latest_run(sub["id"], Stage.pfb, subject_id=s["id"])
+        if ctx.live:            # 「あとから訂正」: any text there can be read and output
+            ready += has_text(run)
+            continue
         if not usable(run) or review.is_stale_chain(repo, run):
             continue
         if s["approval_status"] == "approved" and s["approved_run_id"] == run.id:
@@ -726,15 +791,17 @@ def _submission(ctx: _Ctx, sub: dict) -> _Sub:
             _, _, counts = _students(ctx, sub)    # and the approvals so far still count
             busy.approved, busy.total = counts["approved"], counts["total"]
             busy.last_approved_at = counts["last_approved_at"]
+            busy.ready, busy.last_change = counts.get("ready", 0), counts.get("last_change", "")
         return busy
     return _results(ctx, sub, engine)
 
 
 # --- the work ---
 
-def step_labels(kind: str, engine: str, domain: str) -> list[str]:
+def step_labels(kind: str, engine: str, domain: str, live: bool = False) -> list[str]:
     """The step names of a work in its words: `domain` is a domain value or a profile key
-    (step 1 reads 試合・練習を決める for sports, 会議を決める for a meeting, …)."""
+    (step 1 reads 試合・練習を決める for sports, 会議を決める for a meeting, …); `live` (a
+    「あとから訂正」 work) names step 5 「文を読む・直す」."""
     if kind == Kind.document.value:
         labels = list(DOCUMENT_STEPS)
     elif engine == "paper":
@@ -745,12 +812,14 @@ def step_labels(kind: str, engine: str, domain: str) -> list[str]:
         labels[0] = f"{words(domain).work}を決める"
         if engine == "paper":
             labels[2] = f"{words(domain).people}を確認"
+    if live:
+        labels[-2] = LIVE_STEP
     return labels
 
 
-def _steps(kind: Kind, subs: list[_Sub], wording: str = "general") -> list[str]:
+def _steps(kind: Kind, subs: list[_Sub], wording: str = "general", live: bool = False) -> list[str]:
     paper = bool(subs) and all(s.progress.engine == "paper" for s in subs)
-    return step_labels(kind.value, "paper" if paper else "tracking", wording)
+    return step_labels(kind.value, "paper" if paper else "tracking", wording, live)
 
 
 def _work_reason(subs: list[_Sub], keys: list[str]) -> str:
@@ -785,9 +854,9 @@ _COMPLETE: dict[tuple[str, int], tuple[tuple, WorkProgress]] = {}
 
 
 def _signature(repo: Repo, assignment: dict) -> tuple | None:
-    """Everything the derivation of a work reads, condensed into one query's answer: runs are
-    append-only (count and last id), jobs and approvals change in place (their states are
-    listed). None for an in-memory database."""
+    """Everything the derivation of a work reads, condensed into one query's answer: runs and
+    corrections (text_versions) are append-only (count and last id), jobs and approvals change
+    in place (their states are listed). None for an in-memory database."""
     path = next((r[2] for r in repo.conn.execute("PRAGMA database_list") if r[1] == "main"), "")
     if not path:
         return None
@@ -804,7 +873,10 @@ def _signature(repo: Repo, assignment: dict) -> tuple | None:
                 || '=' || COALESCE(x.approved_run_id, '') || '=' || COALESCE(x.approved_at, '')
                 || '=' || COALESCE(x.participant_id, '') || '=' || x.excluded
                 || '=' || x.display_name, '|'), '')
-           FROM subjects x {join})""", {"a": assignment["id"]}).fetchone()
+           FROM subjects x {join}),
+        (SELECT COUNT(*) || ':' || COALESCE(MAX(v.id), 0) FROM text_versions v
+           JOIN subjects t ON v.subject_id = t.id JOIN submissions s ON t.submission_id = s.id
+          WHERE s.assignment_id = :a)""", {"a": assignment["id"]}).fetchone()
     return (path, tuple(sorted(assignment.items())), tuple(row))
 
 
@@ -841,7 +913,8 @@ def _derive(repo: _Snapshot, assignment: dict, now: datetime) -> WorkProgress:
     domain = assignment.get("domain") or "school"
     wording = profiles.of_work(assignment)
     base = dict(assignment_id=assignment["id"], title=assignment["title"], kind=kind.value,
-                steps=_steps(kind, subs, wording), keys=keys, domain=domain, wording=wording)
+                steps=_steps(kind, subs, wording, ctx.live), keys=keys, domain=domain,
+                wording=wording, mode=assignment.get("review_mode") or "approve")
     if not subs:
         what = "書類" if kind == Kind.document else "動画"
         files_step = keys.index("files") + 1
@@ -851,17 +924,23 @@ def _derive(repo: _Snapshot, assignment: dict, now: datetime) -> WorkProgress:
                             turn_step=files_step)
     approved = sum(s.approved for s in subs)
     total = sum(s.total for s in subs)
+    ready = sum(s.ready for s in subs)
     settled = all(s.settled for s in subs)
-    if settled and approved == 0:   # only students with too little evidence: write by hand
-        for s in subs:
-            s.settled = False
-            s.progress.step, s.progress.status = "review", "your_turn"
-            s.progress.reason = "映っている場面が少ない参加者がいます。確かめて承認できます"
     downloaded_at = assignment.get("pdf_downloaded_at") or ""
-    last_approval = max(s.last_approved_at for s in subs)
-    complete = (settled and approved > 0 and bool(downloaded_at)
-                and downloaded_at >= last_approval)
+    if ctx.live:
+        complete = _live_settle(subs, settled, ready, downloaded_at)
+    else:
+        if settled and approved == 0:   # only students with too little evidence: write by hand
+            for s in subs:
+                s.settled = False
+                s.progress.step, s.progress.status = "review", "your_turn"
+                s.progress.reason = "映っている場面が少ない参加者がいます。確かめて承認できます"
+        last_approval = max(s.last_approved_at for s in subs)
+        complete = (settled and approved > 0 and bool(downloaded_at)
+                    and downloaded_at >= last_approval)
     for s in subs:
+        if ctx.live:
+            break                       # _live_settle has set every group's state
         if complete:
             s.progress.status, s.progress.reason = "done", "完了しました"
         elif (s.settled and s.approved > 0 and downloaded_at
@@ -881,17 +960,39 @@ def _derive(repo: _Snapshot, assignment: dict, now: datetime) -> WorkProgress:
         **base, current=current, done=done, your_turn=bool(turns),
         stopped=any(s.progress.status == "stopped" for s in subs),
         reason=_work_reason(subs, keys), subs=[s.progress for s in subs],
-        approved=approved, total=total, complete=complete,
+        approved=approved, total=total, complete=complete, ready=ready,
         furthest=max(numbers + [keys.index(s.reached) + 1 for s in subs if s.reached]),
         turn_step=min(turns) if turns else None, analysis=analysis)
 
 
+def _live_settle(subs: list[_Sub], settled: bool, ready: int, downloaded_at: str) -> bool:
+    """「あとから訂正」: whether the work is complete (every text there, the PDF received after
+    the latest change), and each group's state: done once its PDF is out and nothing changed
+    since, else back at the PDF step (LIVE_REISSUE)."""
+    last_change = max((s.last_change for s in subs), default="")
+    complete = settled and ready > 0 and bool(downloaded_at) and downloaded_at >= last_change
+    for s in subs:
+        if complete:
+            s.progress.status, s.progress.reason = "done", "完了しました"
+        elif s.settled and s.ready > 0 and downloaded_at:
+            if downloaded_at >= s.last_change:      # its PDF is out; others still run
+                s.progress.status, s.progress.reason = "done", LIVE_DONE
+            else:
+                s.progress.step, s.progress.status = "pdf", "your_turn"
+                s.progress.reason = LIVE_REISSUE
+    return complete
+
+
 def _approvals(ctx: _Ctx, sub: dict) -> tuple[int, int]:
     """(approved, evaluated) people of a group, whatever its step: approved as
-    review.subject_status says (the approved text is its latest one and is current)."""
+    review.subject_status says (the approved text is its latest one and is current);
+    「あとから訂正」: (people with a text, evaluated)."""
     repo, sid = ctx.repo, sub["id"]
     subjects = [s for s in repo.list_subjects(sid)
                 if ctx.kind == Kind.document or is_evaluated(s)]
+    if ctx.live:
+        return sum(1 for s in subjects
+                   if has_text(repo.latest_run(sid, Stage.pfb, subject_id=s["id"]))), len(subjects)
     approved = 0
     for s in subjects:
         if s["approval_status"] != "approved":
@@ -917,10 +1018,10 @@ def _analyse(ctx: _Ctx, subs: list[_Sub]):
         done, n = _approvals(ctx, raw)
         p.analysis = submission_analysis(ctx.repo, raw, ctx.kind, p.engine, weights,
                                          status=p.status, reason=p.reason, approved=done,
-                                         total=n, step=p.step)
+                                         total=n, step=p.step, live=ctx.live)
         parts.append((p.label, p.analysis))
         approved, total = approved + done, total + n
-    return work_analysis(parts, approved, total)
+    return work_analysis(parts, approved, total, live=ctx.live)
 
 
 def _rank(p: WorkProgress) -> int:

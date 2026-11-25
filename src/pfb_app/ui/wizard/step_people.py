@@ -53,13 +53,18 @@ from pfb_app.ui.wizard.progress import SubProgress, View, camera_label, job_line
 
 DECIDE = "これで決定して次へ"
 CONFIRM = "参加者の特定を確認"
-MAP_TITLE = "映っている人が誰か選んでください"
+MAP_TITLE = "映っている人の名前を選んでください"
 MAP_GUIDE = "写真の番号ごとに参加者の名前を選び、分からない人は「対象外」にします。"
 SUGGESTED = "推定した名前が入っています。確かめてから決定してください。"
 RETRACKED = "人を見つけ直したため、新しい写真でもう一度選んでください。"
 REDO_WARNING = ("このつなぎ方を変えると、「したことの書き出し」から先の解析がやり直しになります。"
                 "承認した参加者も、承認し直しになります。")
 REDO_CHECK = "解析がやり直しになり、承認し直しになることを確かめました"
+# 「あとから訂正」 works (no approvals): the same warning in their words
+LIVE_REDO_WARNING = ("このつなぎ方を変えると、「したことの書き出し」から先の解析がやり直しになり、"
+                     "文も作り直しになります。前の文は訂正の記録に残ります。")
+LIVE_REDO_CHECK = "解析がやり直しになり、文も作り直しになることを確かめました"
+LIVE_HELP_REDO = "決めたあとで直すと、解析がやり直しになり、文も作り直しになります（前の文は訂正の記録に残ります）。"
 BUSY_NOTE = "解析が進んでいる間は決定できません。終わると押せるようになります。"
 STOPPED_GUIDE = "止まった理由を読んで、「もう一度ためす」か管理用の画面で直してください。"
 BUSY = "いまは解析が進んでいるため決定できませんでした。終わってから、もう一度押してください。"
@@ -86,6 +91,12 @@ TRACKING_HELP = [
     "うまくいかないとき：写真がない、写っている人が足りないときは、管理用の画面で"
     "人を見つけるところからやり直します。",
 ]
+def tracking_help(live: bool) -> list[str]:
+    """「この画面の使い方」 of the tracking method; a 「あとから訂正」 work's line on a redo
+    speaks of the texts being made again, not of approvals."""
+    return [LIVE_HELP_REDO if live and "承認" in line else line for line in TRACKING_HELP]
+
+
 PAPER_HELP = [
     "解析が見分けた参加者の一覧です。名前と見た目が合っているか確かめます。",
     "合っていれば「参加者の特定を確認」を押します。解析が先へ進みます。",
@@ -329,6 +340,8 @@ def _decide(screen: router.Screen, sub: dict, cam: Camera, rest: list[Camera],
             review.save_tracked_identity(repo, sid, cam.camera, mapping)
             saved = True
         people_grid.drop_kept(cam.form)                                      # now saved
+        # the evaluator decided this camera's people (export.identity_gate: 「人を確かめる」)
+        review.mark_people_checked(repo, sid, [cam.camera])
         if rest:
             st.session_state.setdefault(_NEXT_CAMERA, {})[sid] = rest[0].camera
             flash(f"{cam.label}のつなぎ方を決定しました。次は{rest[0].label}です。", raw=True)
@@ -361,7 +374,7 @@ def _tracking(screen: router.Screen, p: SubProgress, sub: dict) -> None:
     if not cams:
         with theme.step_card(step_wait.STOPPED_TITLE, STOPPED_GUIDE):
             _stopped(screen, p, primary=True)
-        theme.help_expander(TRACKING_HELP)
+        theme.help_expander(tracking_help(screen.progress.live))
         return
     cam = _pick_camera(sub["id"], cams) if len(cams) > 1 else cams[0]
     moving = p.status in ("processing", "waiting_gpu")
@@ -385,7 +398,7 @@ def _tracking(screen: router.Screen, p: SubProgress, sub: dict) -> None:
                           disabled=True)
             if tracking:
                 st.caption(live.NOTHING_TO_PRESS)
-        theme.help_expander(TRACKING_HELP)
+        theme.help_expander(tracking_help(screen.progress.live))
         return
     if router.state()["step"] is None:
         router.go(screen.step)    # keep this screen while choices may be unsaved
@@ -402,7 +415,10 @@ def _tracking(screen: router.Screen, p: SubProgress, sub: dict) -> None:
         if busy:
             st.caption(theme.L(BUSY_NOTE))
         checks = []
-        if changed and results:
+        if changed and results and screen.progress.live:
+            st.warning(theme.L(LIVE_REDO_WARNING))
+            checks.append(st.checkbox(theme.L(LIVE_REDO_CHECK), key=f"pfb_redo_{cam.form.track.id}"))
+        elif changed and results:
             approved = _approved(repo, sub["id"])
             st.warning(theme.L(REDO_WARNING + (f"（いま承認済みの参加者: {approved}人）" if approved else "")))
             checks.append(st.checkbox(theme.L(REDO_CHECK), key=f"pfb_redo_{cam.form.track.id}"))
@@ -417,7 +433,7 @@ def _tracking(screen: router.Screen, p: SubProgress, sub: dict) -> None:
         if st.button(theme.L(DECIDE), key="pfb_people_decide", type="primary",
                      disabled=busy or not all(checks), width="stretch"):
             _decide(screen, sub, cam, rest, chosen, changed)
-    theme.help_expander(TRACKING_HELP)
+    theme.help_expander(tracking_help(screen.progress.live))
 
 
 # --- paper: the identity results -------------------------------------------------------------
@@ -471,6 +487,7 @@ def _paper(screen: router.Screen, p: SubProgress, sub: dict) -> None:
                      width="stretch"):
             try:
                 review.confirm_identity(screen.repo, sub["id"])
+                review.mark_people_checked(screen.repo, sub["id"])   # the evaluator's look
             except ApprovalError as e:
                 st.error(camera_label(plain_service(str(e))))
             else:

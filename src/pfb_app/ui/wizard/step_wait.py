@@ -43,8 +43,12 @@ HELP = [
 ]
 
 
-def student_states(repo: Repo, sub: dict) -> list[tuple[str, str, str]]:
-    """[(name, state word, chip kind)] of a video group's students."""
+LIVE_READY = "文ができました"   # 「あとから訂正」: the text goes out as it is (no approval)
+
+
+def student_states(repo: Repo, sub: dict, later: bool = False) -> list[tuple[str, str, str]]:
+    """[(name, state word, chip kind)] of a video group's students (`later`: a 「あとから訂正」
+    work, where a text is ready as soon as it is there)."""
     jobs = live.latest_jobs(repo, sub["id"])
     out = []
     for subj in repo.list_subjects(sub["id"]):
@@ -60,7 +64,9 @@ def student_states(repo: Repo, sub: dict) -> list[tuple[str, str, str]]:
             state = ("順番を待っています", "waiting_gpu")
         elif status == "queued":
             state = ("文章の順番を待っています", "processing")
-        elif fresh and subj["approval_status"] == "approved" \
+        elif later and usable(run) and (run.output or {}).get("pfb"):
+            state = (LIVE_READY, "done")
+        elif fresh and not later and subj["approval_status"] == "approved" \
                 and subj["approved_run_id"] == run.id:
             state = ("承認済み", "approved")
         elif fresh and (run.output or {}).get("pfb_status") == "generated":
@@ -87,12 +93,12 @@ def _group_html(p: SubProgress, students: str = "") -> str:
             f'</span></div>{students}</section>')
 
 
-def _students_html(repo: Repo, sub: dict, kind: Kind) -> str:
+def _students_html(repo: Repo, sub: dict, kind: Kind, later: bool = False) -> str:
     if kind != Kind.video:
         return ""
     rows = "".join(
         f'<li class="pfb-student"><span class="pfb-student__name">{escape(name)}</span>'
-        f'{_chip(chip, word)}</li>' for name, word, chip in student_states(repo, sub))
+        f'{_chip(chip, word)}</li>' for name, word, chip in student_states(repo, sub, later))
     if not rows:
         return ""
     return f'<ul class="pfb-students" aria-label="{escape(theme.L("参加者ごとの様子"))}">{rows}</ul>'
@@ -125,7 +131,7 @@ def _board(aid: int, settings):
         subs = {s["id"]: s for s in repo.list_submissions(aid)}
         progress_panel.draw(view, settings)
         for p in progress.subs:
-            students = _students_html(repo, subs[p.submission_id], kind)
+            students = _students_html(repo, subs[p.submission_id], kind, progress.live)
             if p.status == "stopped" and p.action not in ("reselect", "rerun"):
                 # (a reselect or a rerun is the way out by itself)
                 st.html(_group_html(p))

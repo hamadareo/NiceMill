@@ -1,4 +1,4 @@
-"""ログインなしで使えるモード (open mode, ruling 2026-11-13).
+"""ログインなしで使えるモード (open mode, 2026-11-13).
 
 With `auth_enabled: false` every browser opens the app as an administrator of role without
 a sign-in (ui.auth_ui.OPEN_SESSION), uploads need only the page's own token, the sidebar

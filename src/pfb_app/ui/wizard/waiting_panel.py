@@ -19,6 +19,11 @@ Approving goes in two presses, never one:
 Afterwards the screen says how many were approved, who was left and why, and how to undo an
 approval (services.pending_review.UNDO). The press's callback re-checks the sign-in
 (ui.access) before it writes: a viewer's or an expired session approves nothing.
+
+「あとから訂正」 works have nothing to approve. Their counterpart is 「誤りの報告がある人」: the people
+whose text someone reported wrong (services.pending_review.reported), each with the reason, the
+text and 「開く」 (the work, where step 5 「文を読む・直す」 corrects it or closes the report).
+Nothing is done in bulk there.
 """
 from html import escape
 
@@ -54,6 +59,10 @@ DONE_NONE = "承認した人はいませんでした。"
 LEFT = "承認しなかった人（作業を開いて、一人ずつ確かめてください）"
 OPEN_WORK = "開く"
 EDIT_ONLY = "見るだけの人は、承認できません。"
+REPORTS = "誤りの報告がある人（{n}人）"           # 「あとから訂正」 works
+REPORTS_INTRO = ("「この文は間違い」と報告された文です。作業を開いて「文を読む・直す」で、"
+                 "文を直すか、確かめて報告を閉じてください。")
+REPORT_WHY = "報告の理由：{reason}"
 
 CSS = """<style>
 .pfb-wait__work { margin: 0.75rem 0 0.25rem; font-weight: 700; color: var(--pfb-ink); }
@@ -69,9 +78,10 @@ CSS = """<style>
 
 def candidates(works: list[WorkProgress], pending: set[int]) -> list[int]:
     """The works with a group at 「確認して承認」 where it is the coach's turn (a cheap read of
-    what the home screen already holds), in the home screen's order."""
+    what the home screen already holds), in the home screen's order. 「あとから訂正」 works
+    have nothing to approve: they are never offered."""
     return [w.assignment_id for w in works
-            if not w.complete and w.assignment_id not in pending
+            if not w.complete and w.assignment_id not in pending and not w.live
             and any(s.step == "review" and s.status == "your_turn" for s in w.subs)]
 
 
@@ -179,11 +189,44 @@ def _list(repo, ids: list[int]) -> None:
             st.session_state.pop(key, None)
 
 
+def _reports(repo, works: list[WorkProgress], pending: set[int]) -> None:
+    """「誤りの報告がある人」 of the 「あとから訂正」 works (nothing when there is none)."""
+    live = {w.assignment_id: w for w in works if w.live and w.assignment_id not in pending}
+    found = pending_review.reported(repo, list(live))
+    if not found:
+        return
+    n = sum(len(w.people) for w in found)
+    st.html(CSS)
+    with keyed.expander(REPORTS.format(n=n), key="pfb_wait_reports", icon=":material/report:"):
+        st.caption(REPORTS_INTRO)
+        for work in found:
+            head, open_ = st.columns([5, 1], vertical_alignment="center")
+            with head:
+                st.html(f'<p class="pfb-wait__work">{escape(work.title)}</p>')
+            with open_:
+                if st.button(OPEN_WORK, key=f"pfb_wait_open_live_{work.assignment_id}",
+                             width="stretch"):
+                    # 「文を読む・直す」 (step 5 of a video work, 4 of a documents one)
+                    router.open_work(work.assignment_id,
+                                     live[work.assignment_id].number("review"))
+                    st.rerun()
+            for person in work.people:
+                group = f'<span class="pfb-wait__group">（{escape(person.group)}）</span>'
+                why = REPORT_WHY.format(reason=person.reason) + (
+                    f"（{person.note}）" if person.note else "")
+                st.html(f'<p class="pfb-wait__who">{escape(person.name)}さん {group}</p>'
+                        f'<p class="pfb-wait__why">{escape(why)}</p>'
+                        + (f'<p class="pfb-wait__text">{escape(person.text)}</p>' if person.text
+                           else ""))
+
+
 def render(repo, works: list[WorkProgress], pending: set[int]) -> None:
     """On the home screen, under the works' groups' heading area: the entry, and the list
-    while it is open. Nothing for a person who cannot edit or when nobody is at the check."""
+    while it is open. Nothing for a person who cannot edit or when nobody is at the check.
+    「あとから訂正」 works: 「誤りの報告がある人」 (`_reports`)."""
     if not access.can_edit():
         return
+    _reports(repo, works, pending)
     ids = candidates(works, pending)
     if not ids:                      # everyone is done (the last press's report is still said)
         st.session_state.pop(OPEN_KEY, None)

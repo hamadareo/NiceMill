@@ -1,4 +1,4 @@
-"""Build the ナイスミル brand files: the vendored web fonts and the logo files.
+"""Build the NiceMill brand files: the vendored web fonts and the logo files.
 
     uv run python scripts/brand_assets.py <dir with the source fonts>
 
@@ -18,7 +18,7 @@ Writes, under src/pfb_app/ui/static:
 - fonts/BarlowCondensed-{SemiBold,Bold}.woff2: Latin only (numbers).
 - brand/nicemiru_mark.svg, nicemiru_mark_mono.svg: the mark (a ball-orange tile: a court's
   centre line and centre circle make an eye).
-- brand/nicemiru_wordmark.svg, _ondark.svg, _mono.svg: the mark and 「ナイスミル」, the
+- brand/nicemiru_wordmark.svg, _ondark.svg, _mono.svg: the mark and 「NiceMill」, the
   letters as outlines (paths) from Dela Gothic One, so an <img> needs no web font.
 - brand/nicemiru_mark_64.png, nicemiru_mark_192.png: the mark as a picture (tab icon).
 
@@ -37,7 +37,7 @@ COURT = "#0F2D5C"     # court navy (TOKENS["board"])
 AMBER = "#FFB000"     # shot-clock amber (TOKENS["amber"])
 
 MPLUS_WEIGHTS = ((400, "Regular"), (500, "Medium"), (700, "Bold"), (800, "ExtraBold"))
-WORD = "ナイスミル"
+WORD = "NiceMill"
 
 
 # --- the mark -------------------------------------------------------------------------------
@@ -62,11 +62,11 @@ def mark_svg(mono: bool = False) -> str:
     8 pt: its size in the PDFs' footers, where an image in a page margin keeps its own size)."""
     px = 11 if mono else 32
     return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" '
-            f'width="{px}" height="{px}" role="img" aria-label="ナイスミル"><title>ナイスミル</title>'
+            f'width="{px}" height="{px}" role="img" aria-label="NiceMill"><title>NiceMill</title>'
             f'{mark_body(mono)}</svg>\n')
 
 
-# --- the wordmark: 「ナイスミル」 in Dela Gothic One, as outlines -------------------------------
+# --- the wordmark: 「NiceMill」 in Dela Gothic One, as outlines -------------------------------
 
 def word_path(font_path: Path, *, size: float = 20.5, x0: float = 49.0, baseline: float = 23.5,
               spacing: float = 0.5, skew_deg: float = -9.0) -> tuple[str, float]:
@@ -97,7 +97,7 @@ def word_path(font_path: Path, *, size: float = 20.5, x0: float = 49.0, baseline
 def wordmark_svg(path_d: str, *, ink: str, mono: bool = False, width: int = 156) -> str:
     return ('<svg xmlns="http://www.w3.org/2000/svg" '
             f'viewBox="0 0 {width} 32" width="{width}" height="32" role="img" '
-            f'aria-label="ナイスミル"><title>ナイスミル</title>{mark_body(mono)}'
+            f'aria-label="NiceMill"><title>NiceMill</title>{mark_body(mono)}'
             f'<path d="{path_d}" fill="{ink}"/></svg>\n')
 
 

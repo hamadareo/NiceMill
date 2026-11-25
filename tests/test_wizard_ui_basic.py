@@ -28,7 +28,10 @@ PRIMARY_LABELS = ("新しく始める", "続ける", "これで決定して次�
                   "入れて確かめる",   # the drop zone of a new work (and a later video group)
                   "映っている人を自動で選び直す", "もう一度解析する",   # a stopped step 4
                   "もう一度ためす",   # a stopped step 3 or 4 (services.retry)
-                  "新しい作業として始める")   # step 2 of a work whose videos were removed
+                  "新しい作業として始める",   # step 2 of a work whose videos were removed
+                  # 「あとから訂正」 works (step_correct, step_pdf._live)
+                  "PDFを受け取る", "直した文を保存する", "このまま保存する", "報告する",
+                  "参加者用のPDFを受け取る")
 FORBIDDEN = ("stage_run", "job", "engine", "P-label", "model_key", "エンジン", "ジョブ",
              "PFB3x3", "pfb3x3",
              # internal words replaced by plain ones (UX round 2, audit #6)

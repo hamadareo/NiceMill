@@ -36,7 +36,11 @@ def rename_work(repo: Repo, aid: int, title: str) -> str:
     return name
 
 
-def mark_pdf_downloaded(repo: Repo, aid: int) -> None:
-    """Record that the student PDF of the assignment was downloaded (now)."""
+def mark_pdf_downloaded(repo: Repo, aid: int, people: list[int] | None = None) -> None:
+    """Record that the student PDF of the assignment was downloaded (now); `people`: who that
+    PDF carried (「あとから訂正」: corrections.pdf_people reads it for 「再出力が必要」)."""
     at = repo.set_pdf_downloaded(aid)
-    repo.audit("pdf_downloaded", f"assignment:{aid}", {"at": at})
+    detail: dict = {"at": at}
+    if people is not None:
+        detail["people"] = sorted(int(i) for i in people)
+    repo.audit("pdf_downloaded", f"assignment:{aid}", detail)

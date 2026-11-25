@@ -63,11 +63,26 @@ def signed_in_as_admin(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def plenty_of_disk(monkeypatch):
-    """The low-disk guard reads the real free space; on a nearly full machine every screen would
-    warn and the screen tests would fail for a reason that has nothing to do with them. Tests
-    that exercise the guard pass their own `usage=` and are not affected."""
-    from collections import namedtuple
+def roomy_disk(monkeypatch):
+    """The disk-space warning (ops.disk) looks at the real file system: on a nearly full machine it
+    would show on every screen and break the tests that read the screens. Tests that test the
+    warning pass their own `usage`."""
+    from types import SimpleNamespace
     from pfb_app.ops import disk
-    usage = namedtuple("usage", "total used free")
-    monkeypatch.setattr(disk, "_usage", lambda path: usage(2 * 1024**4, 1024**3, 1024**4))
+    gb = 1024 ** 3
+    monkeypatch.setattr(disk, "_usage", lambda path: SimpleNamespace(total=2000 * gb, used=0, free=1000 * gb))
+
+
+@pytest.fixture
+def only_old_gates(monkeypatch):
+    """For tests of the approval MECHANICS (the worker's path, the screen's chips, the audit,
+    the handouts' wording): the machine checks of services.autoapprove reduce to the approval
+    gates (review._skip_reason), as the first automatic approval had them. The checks
+    themselves are tested in test_autoapprove.py."""
+    from pfb_app.services import autoapprove, review
+
+    def evaluate(repo, subject, run, policy=autoapprove.Policy()):
+        why = review._skip_reason(repo, subject, run)   # noqa: SLF001
+        return autoapprove.Verdict([autoapprove.Check("base", "承認できる状態", why is None,
+                                                      why or "承認できる状態です")])
+    monkeypatch.setattr(autoapprove, "evaluate", evaluate)

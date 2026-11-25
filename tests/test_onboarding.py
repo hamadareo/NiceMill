@@ -242,7 +242,7 @@ def test_the_quality_page_shows_this_servers_numbers(env):
 
 def test_every_research_claim_names_its_source_and_no_unmeasured_claim_is_made():
     for claim in (*quality_view.VALIDATED, *quality_view.WEAK, *quality_view.NOT_YET):
-        assert claim.source in (quality_view.RESEARCH, quality_view.PILOT, quality_view.DESIGN)
+        assert claim.source in (quality_view.RESEARCH, quality_view.DESIGN)
     said = "".join(c.text for c in quality_view.VALIDATED)
     for overclaim in ("正確", "専門家と同じ", "保証"):
         assert overclaim not in said
@@ -263,13 +263,13 @@ def test_the_split_bar_draws_one_segment_per_kind_with_gaps_auto_last():
     widths = [float(r.get("width")) for r in root.iter(f"{ns}rect")
               if r.find(f"{ns}title") is not None]
     assert sum(widths) == pytest.approx(quality_view.BAR_W - 3 * quality_view.GAP)
-    assert "50%" in doc and "下書きのまま承認 6人" in doc and "自動で承認 2人" in doc
+    assert "50%" in doc and "下書きのまま承認 6人" in doc and "自動承認（人は未確認） 2人" in doc
 
 
 def test_the_split_chart_alt_text_holds_every_value():
     alt = quality_view.split_alt(SPLIT)
     for label, n, pct in (("下書きのまま承認", 6, 50), ("直して承認", 2, 17),
-                          ("自分で書いて承認", 0, 0), ("短い文で承認", 2, 17), ("自動で承認", 2, 17)):
+                          ("自分で書いて承認", 0, 0), ("短い文で承認", 2, 17), ("自動承認（人は未確認）", 2, 17)):
         assert f"{label} {n}人（{pct}%）" in alt, label
     assert f'alt="{alt}"' in quality_view.split_html(SPLIT)
 
@@ -309,12 +309,13 @@ def test_the_names_answer_is_about_video():
 
 def test_the_accuracy_answer_tells_about_automatic_approval():
     from pfb_app.ui.wizard import guide_view   # noqa: PLC0415
-    # 「確認せずに自動で承認する」 sends texts nobody checked: never claim every text is checked
-    assert "確認せずに自動で承認する" in guide_view.ACCURACY
-    assert "そのまま渡しています" in guide_view.ACCURACY
-    # it approves them without a check; whether they are handed out is the person's choice
+    # the work's switch approves texts no person looked at: never claim every text is checked
+    assert "機械チェックを通った文を自動承認する" in guide_view.ACCURACY
+    assert "機械チェック済み・人は未確認" in guide_view.ACCURACY
+    assert "保証しません" in guide_view.ACCURACY
+    # whether they are handed out is the person's choice
     assert "確かめずに渡ります" not in guide_view.ACCURACY
-    assert "確かめずに自動で承認されます" in guide_view.ACCURACY
+    assert "人が確認しないまま自動承認されます" in guide_view.ACCURACY
 
 
 def test_the_grounding_claim_leaves_out_short_and_handwritten_texts():

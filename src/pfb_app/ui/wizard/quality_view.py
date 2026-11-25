@@ -15,7 +15,8 @@ from html import escape
 import streamlit as st
 
 from pfb_app.services import quality_stats
-from pfb_app.services.quality_stats import AS_IS, AUTO, EDITED, REWRITTEN, SHORT, QualityStats
+from pfb_app.services.quality_stats import (AS_IS, AUTO, EDITED, LIVE_EDITED, LIVE_KINDS, LIVE_NONE,
+                                           LIVE_REDONE, REWRITTEN, SHORT, QualityStats)
 from pfb_app.storage.db import Repo
 from pfb_app.ui.wizard import help as guide
 from pfb_app.ui.wizard import svg, theme
@@ -29,12 +30,17 @@ LEAD = ("このサーバーで実際に数えた数字と、研究で確かめ�
 # one hue, light to dark on the board, all theme tokens (validated: dataviz
 # validate_palette.py --mode dark --surface board --ordinal, all pass)
 KIND_LABELS = {AS_IS: "下書きのまま承認", EDITED: "直して承認", REWRITTEN: "自分で書いて承認",
-               SHORT: "短い文で承認", AUTO: "自動で承認"}
+               SHORT: "短い文で承認", AUTO: "自動承認（人は未確認）"}
 RAMP = {AS_IS: TOKENS["chalk"], EDITED: TOKENS["chalk-2"], REWRITTEN: TOKENS["chalk-3"],
         SHORT: TOKENS["chalk-4"], AUTO: TOKENS["chalk-5"]}
 BAR_W, BAR_H, GAP = 600.0, 36.0, 2.0
 
 EMPTY = "まだ承認された文章がありません。承認すると、ここに数字が出ます。"
+LIVE_HEAD = "「あとから訂正」の作業（文ができた{n}人）"
+LIVE_ROWS = {LIVE_NONE: "訂正なし", LIVE_EDITED: "文を直した", LIVE_REDONE: "作り直した・前の版に戻した"}
+LIVE_NOTE = ("「訂正なし」は、誤りがなかったという意味ではありません。まだだれも直していない、ということです。"
+             "承認はしないため、上の承認の数には入りません。")
+LIVE_REPORTS = "誤りの報告を受けた人：{n}人（うち確認中 {o}人）"
 FEW = "まだ{n}人分の記録です。人数が少ないうちは、目安として見てください。"
 SCOPE = "いまある作業の記録から数えています。削除した作業は入りません。"
 
@@ -46,7 +52,6 @@ class Claim:
 
 
 RESEARCH = "研究データ（開発中の試験。このサーバーの記録ではありません）"
-PILOT = "試験運用の記録（2026年10月、2つの作業）"
 DESIGN = "このアプリのつくり"
 
 VALIDATED = (
@@ -54,17 +59,20 @@ VALIDATED = (
           DESIGN),
     Claim("文章の一つ一つは、観察した場面（時刻つき）にもとづいて作られます（短い文と手書きの文を除く）。"
           "評価者用のPDFで、どの場面を根拠にしたかを確かめられます。", DESIGN),
-    Claim("人が承認するまで、文章はだれにも渡りません。「確認せずに自動で承認する」は、"
-          "オンにしたときだけ働きます（はじめはオフです）。", DESIGN),
+    Claim("文の出し方は作業ごとに選べます。「あとから訂正」（画面から作る作業のはじめの設定）では、"
+          "AIが作成した文が人の確認を待たずにPDFに入ります。PDFには、AIが作成した文であること、確認状況"
+          "（訂正なし・訂正済み 版N・誤りの報告あり・確認中）と訂正の記録が入り、違っていればあとから直せます。",
+          DESIGN),
+    Claim("「承認して出す」の作業では、人が承認するまで、文章はだれにも渡りません。「機械チェックを通った文を"
+          "自動承認する」は、オンにしたときだけ働きます（はじめはオフです）。オンのときも、機械チェックをすべて"
+          "通った文章だけが「自動承認（機械チェック済み・人は未確認）」になり、人の承認とは別に数えます。", DESIGN),
     Claim("文章づくりは安定していました。2,592件のうち2,451件（94.6%）で文章ができ、書くのを"
           "断ったことは0件でした。残りは、場面が足りなかった45件（1.7%）と、途中で切れた回答"
           "96件（3.7%）でした。", RESEARCH),
-    Claim("試験運用の2つの作業（13人と4人）で、解析の段階29件がすべて1回目で終わりました。"
-          "13人の作業では、決定から下書きがそろうまで約34分、10人の承認は34秒でした。", PILOT),
 )
 WEAK = (
-    Claim("場面が少ない人には、文章が書けないことがあります。試験運用では13人中3人（23%）が"
-          "そうでした。いまは短い文を用意しますが、短い文は具体的ではありません。", PILOT),
+    Claim("場面が少ない人には、文章が書けないことがあります。いまは短い文を用意しますが、"
+          "短い文は具体的ではありません。", DESIGN),
     Claim("人の見分け（同じ人を最後までたどること）は、3対3の試合の動画で、つなぎの確かさが"
           "0.4〜0.6でした。カメラが大きく動くと、取り違えが増えます。", RESEARCH),
     Claim("先行研究の参考の文章と、4人分の文章を文の似かたで比べたところ、対応する人の文章がいちばん"
@@ -85,7 +93,7 @@ NOT_YET = (
 )
 SO = ("そのため、このアプリは「正確な評価」や「専門家と同じ」とは言いません。"
       "文章は下書きとして、あなたが確かめてから渡してください。")
-SOURCE_NOTE = ("研究データと試験運用の数字は、開発チームの記録（2026年10月22日まとめ）からの"
+SOURCE_NOTE = ("研究データの数字は、開発チームの記録（2026年10月22日まとめ）からの"
                "引用です。このサーバーで測った数字ではありません。")
 
 CSS = """<style>
@@ -160,7 +168,7 @@ def tiles_html(s: QualityStats) -> str:
              if s.jobs_done or s.jobs_stopped else "まだ記録がありません")
     items = (
         _tile("下書きのまま承認", percent(s.share(AS_IS)), "%", of),
-        _tile("自動で承認", percent(s.auto_share), "%", of),
+        _tile("自動承認（人は未確認）", percent(s.auto_share), "%", of),
         _tile("短い文で承認", percent(s.share(SHORT)), "%", of),
         _tile("解析を始めてから下書きがそろうまで", minutes(s.turnaround_median_sec), "分", turn),
         _tile("1回目で終わった解析の段階", percent(s.first_try_share), "%", first),
@@ -222,13 +230,28 @@ def measured_html(s: QualityStats) -> str:
         body += split_html(s)
         if s.few:
             body += f'<p class="pfb-measured__note">{escape(FEW.format(n=s.approved_total))}</p>'
-    else:
+    elif not s.live_total:
         body += f'<p class="pfb-measured__empty">{escape(EMPTY)}</p>'
+    if s.live_total:
+        body += live_html(s)
     if s.retries:
         body += (f'<p class="pfb-measured__note">「もう一度ためす」を押した回数：{s.retries}回</p>')
     return (f'<section class="pfb-measured" aria-label="このサーバーでの実績">'
             f'<h2 class="pfb-measured__h">このサーバーでの実績</h2>'
             f'<p class="pfb-measured__scope">{escape(scope)}</p>{body}</section>')
+
+
+def live_html(s: QualityStats) -> str:
+    """「あとから訂正」 works: the people by their correction record (counts and shares), the
+    reports, and what 「訂正なし」 does not mean."""
+    total = s.live_total
+    rows = "".join(f'<dt>{escape(LIVE_ROWS[k])}</dt><dd>{s.live[k]}人・{round(s.live[k] * 100 / total)}%'
+                   '</dd>' for k in LIVE_KINDS)
+    return (f'<p class="pfb-split__h">{escape(LIVE_HEAD.format(n=total))}</p>'
+            f'<dl class="pfb-split__legend" aria-label="あとから訂正の作業の内わけ">{rows}</dl>'
+            f'<p class="pfb-measured__note">{escape(LIVE_REPORTS.format(n=s.live_reported, o=s.live_open))}</p>'
+            f'<p class="pfb-measured__note">{escape(LIVE_NOTE)}</p>'
+            + (f'<p class="pfb-measured__note">{escape(FEW.format(n=total))}</p>' if total < quality_stats.FEW else ""))
 
 
 def claims_html(title: str, guide_text: str, claims: tuple[Claim, ...], kind: str) -> str:
@@ -243,7 +266,7 @@ def page_html(s: QualityStats) -> str:
     return CSS + (
         f'<div class="pfb-quality"><h1 class="pfb-quality__title">{escape(TITLE)}</h1>'
         f'<p class="pfb-quality__lead">{escape(LEAD)}</p>{measured_html(s)}'
-        + claims_html("研究で確かめたこと", "このアプリのつくりと、研究・試験運用で確かめたことです。",
+        + claims_html("研究で確かめたこと", "このアプリのつくりと、研究で確かめたことです。",
                       VALIDATED, "ok")
         + claims_html("わかっている弱いところ", "測ってみて、まだ十分ではなかったことです。", WEAK, "weak")
         + claims_html("まだ確かめていないこと", "測っていないので、できるとは言えないことです。",

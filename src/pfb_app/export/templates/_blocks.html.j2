@@ -121,9 +121,26 @@
 <h2>作業ごとの記録</h2>
 <ul class="moment-list growth-works">
 {% for w in g.works %}
-<li><span class="when">{{ w.when }}・{{ w.activity }}</span><span class="what">「{{ w.title }}」{% if w.group %}（{{ w.group }}）{% endif %}{% if w.points %}　{{ w.points }}{% endif %}</span>{% if w.quote %}<span class="why serif">「{{ w.quote }}」</span>{% endif %}</li>
+<li><span class="when">{{ w.when }}・{{ w.activity }}</span><span class="what">「{{ w.title }}」{% if w.group %}（{{ w.group }}）{% endif %}{% if w.points %}　{{ w.points }}{% endif %}{% if w.state %}（{{ w.state }}）{% endif %}</span>{% if w.quote %}<span class="why serif">「{{ w.quote }}」</span>{% endif %}</li>
 {% endfor %}
 </ul>
 {% if screen %}<footer class="share">{{ g.footer }}</footer>{% endif %}
 </article>
 {% endmacro %}
+
+{# a draft's banner (top of the person's page) and the footage credit (end of every handout) #}
+{% macro draft_banner(p, text) %}{% if p.draft %}<p class="draft-banner">{{ text }}</p>{% endif %}{% endmacro %}
+{% macro credit(lines) %}{% if lines %}<section class="credit">{% for l in lines %}<p>{{ l }}</p>{% endfor %}</section>{% endif %}{% endmacro %}
+
+{# 「あとから訂正」: what the page says instead of an approval (never the word 承認) #}
+{% macro live_banner(p, text) %}{% if p.live %}<p class="live-banner">{{ text }}<br><b>確認状況：{{ p.live_label }}</b></p>{% endif %}{% endmacro %}
+{% macro live_record(p, stamp, contact, who) %}{% if p.live %}<section class="credit live-record">
+<p>確認状況：{{ p.live_label }}</p>
+{% if p.plain_note %}<p>{{ p.plain_note }}</p>{% endif %}
+{% if p.live_lines %}{% for l in p.live_lines %}<p>訂正の記録：{{ l }}</p>{% endfor %}{% else %}<p>訂正の記録：まだ訂正はありません。</p>{% endif %}
+<p>出力日時：{{ stamp }}　文の版：{{ p.sheet.live_version }}（出力のあとに訂正があった場合は、再出力が必要です）</p>
+{% if who == "handout" %}<p>{{ contact }}</p>{% endif %}
+</section>{% endif %}{% endmacro %}
+
+{# the one neutral line a handout carries about its text (small, as the credit; no box or colour) #}
+{% macro ai_line(p, text) %}{% if p.draft or p.live %}<section class="credit"><p>{{ text }}</p>{% if p.ident_note %}<p>{{ p.ident_note }}</p>{% endif %}</section>{% endif %}{% endmacro %}

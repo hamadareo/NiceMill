@@ -16,6 +16,10 @@ reason (`Person.why`) and has to be opened and approved one by one.
 Nothing here decides who may approve: the screen shows the controls only to a person who can
 edit (ui.access) and re-checks in the press's callback; the repository handed to `approve`
 carries the signed-in person for the audit.
+
+A 「あとから訂正」 work has nothing to approve and is never in `waiting`. What waits for a look
+there is a text someone reported wrong: `reported` lists those people (誤りの報告あり・確認中),
+work by work, with the reason; each is opened and handled in the work (step 5), never in bulk.
 """
 from dataclasses import dataclass
 
@@ -90,3 +94,46 @@ def approve(repo: Repo, picked: dict[int, int | None]) -> review.BulkResult:
     shown}), by `review.bulk_approve`: a text that is no longer that run, or that no longer
     passes the bar, is skipped with its plain reason."""
     return review.bulk_approve(repo, dict(picked))
+
+
+@dataclass(frozen=True)
+class Reported:
+    subject_id: int
+    name: str
+    group: str
+    reason: str
+    note: str | None
+    text: str                  # the text the report is about
+
+
+@dataclass(frozen=True)
+class WorkReported:
+    assignment_id: int
+    title: str
+    people: tuple[Reported, ...]
+
+
+def reported(repo: Repo, assignment_ids) -> list[WorkReported]:
+    """The people of these 「あとから訂正」 works whose newest correction row is a report (one
+    query), work by work in the order given; works waiting to be deleted are left out."""
+    ids = [int(a) for a in assignment_ids]
+    if not ids:
+        return []
+    gone = deletion.pending_deletions(repo)
+    marks = ",".join("?" * len(ids))
+    rows = repo.conn.execute(
+        "SELECT b.assignment_id, s.id, s.display_name, b.label, v.reason, v.note, v.text,"
+        " a.title FROM text_versions v JOIN subjects s ON v.subject_id = s.id"
+        " JOIN submissions b ON s.submission_id = b.id JOIN assignments a ON b.assignment_id = a.id"
+        " WHERE v.kind = 'report' AND a.review_mode = 'correct_later'"
+        " AND v.id = (SELECT MAX(w.id) FROM text_versions w WHERE w.subject_id = s.id)"
+        f" AND b.assignment_id IN ({marks}) ORDER BY s.id", ids).fetchall()
+    by_work: dict[int, list[Reported]] = {}
+    titles: dict[int, str] = {}
+    for aid, sid, name, group, reason, note, text, title in rows:
+        if aid in gone:
+            continue
+        titles[aid] = title
+        by_work.setdefault(aid, []).append(Reported(sid, name, group, reason or "", note,
+                                                    text or ""))
+    return [WorkReported(a, titles[a], tuple(by_work[a])) for a in ids if a in by_work]

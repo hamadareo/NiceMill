@@ -26,7 +26,7 @@ mark() {   # mark LEVEL TEXT
         2) printf '[要対応] %s\n' "$2"; LEVEL=2 ;;
     esac
 }
-echo "== ナイスミルの運用チェック（読み取りだけ）$(date '+%Y-%m-%d %H:%M') =="
+echo "== NiceMillの運用チェック（読み取りだけ）$(date '+%Y-%m-%d %H:%M') =="
 
 # how it is started
 t=0; s=0

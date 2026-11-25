@@ -15,10 +15,17 @@ repo = get_repo()
 st.title("PDF出力")
 assignment = select_assignment(repo)
 if assignment is not None:
-    approved = collect_approved(repo, assignment["id"])
-    st.write(f"承認済み: {len(approved)}件")
+    if assignment.get("review_mode") == "correct_later":    # 「あとから訂正」: no approvals
+        from pfb_app.export.sheets import build_report      # noqa: PLC0415
+        approved = build_report(repo, assignment["id"], with_pictures=False).exported
+        st.write(f"PDFに入る文（あとから訂正）: {len(approved)}件")
+        empty = "PDFに入れられる文がありません。"
+    else:
+        approved = collect_approved(repo, assignment["id"])
+        st.write(f"承認済み: {len(approved)}件")
+        empty = "承認済みのフィードバックがありません。「確認・承認」ページで承認してください。"
     if not approved:
-        st.info("承認済みのフィードバックがありません。「確認・承認」ページで承認してください。")
+        st.info(empty)
     else:
         kinds = {"teacher": ("評価者用PDF", render_teacher_pdf),
                  "student": ("参加者用PDF", render_student_pdf),

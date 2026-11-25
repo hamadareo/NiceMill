@@ -2,20 +2,26 @@
 {% import "_blocks.html.j2" as b %}
 {# each handout's own footer (a person's check or 自動で承認), set by its .footline #}
 {% block footer_content %}string(footer, first){% endblock %}
+{% block style %}{% if compact %}
+@page { margin: 9mm 12mm 12mm; }
+{% endif %}{% endblock %}
 {% block body %}
 {% for p in people %}
-<article class="handout">
+<article class="handout{% if compact %} compact{% endif %}">
 {% if not screen %}<i class="footline" data-footer="{{ p.footer }}"></i>{% endif %}
 {{ b.masthead(org, title, date, src) }}
 <section class="person">
 {{ b.portrait(p, src, accent) }}
-<div><h1 class="name serif">{{ p.name }}<span class="to">さんへ</span></h1>
-<p class="sub">{{ words.work }}「{{ title }}」のふりかえり</p></div>
+<div><h1 class="name serif">{{ p.name }}{% if not p.jersey %}<span class="to">さんへ</span>{% endif %}</h1>
+<p class="sub">{% if p.jersey_id %}{{ p.jersey_id }}　{% endif %}{{ words.work }}「{{ title }}」のふりかえり</p></div>
 </section>
 {{ b.letter(p) }}
 {{ b.tips(p) }}
 {{ b.pictures(p, video, src) }}
 {{ b.charts(p, words) }}
+{{ b.credit(credits) }}
+{{ b.ai_line(p, ai_line) }}
+{{ b.live_record(p, stamp, contact, 'handout') }}
 {% if screen %}<footer class="share">{{ p.footer }}</footer>{% endif %}
 </article>
 {% if p.growth %}{{ b.growth(p, p.growth, org, title, date, src, screen) }}{% endif %}
