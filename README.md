@@ -17,9 +17,9 @@
 <p align="center">日本語 | <a href="#english">English</a></p>
 
 <p align="center">
-  <img src="docs/images/readme_demo.gif" width="800" alt="NiceMill が作った振り返り動画。試合の映像の上で「8番？」の選手に枠と札が付き、下に「開始から 00:46 パス ボールを別の参加者にパスした。」とAIの文が出る">
+  <img src="docs/images/readme_demo.gif" width="800" alt="公開の試合映像の上で、NiceMill が選手一人ひとりを枠で追いかける様子。字幕は「人を追いかけて、枠で示します」「一人ひとりの「よかった所」を、根拠の場面つきで文にします」">
 </p>
-<p align="center"><sub>NiceMill が公開の試合動画（TBF、CC BY 3.0）から作った振り返り動画。選んだ人に枠と札を付け、AI が書いた「よかった場面」を字幕にします。</sub></p>
+<p align="center"><sub>公開の試合動画（TBF、CC BY 3.0）で NiceMill を動かした様子。一人ひとりを枠で追いかけ、その人の「よかった所」を文にします。</sub></p>
 
 ---
 
@@ -290,7 +290,7 @@ NiceMill/
   - 車いすバスケットボールの動画（Splash tv、Wikimedia Commons、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)）
 - `docs/images/` の画像は、上の1本目のクリップ（約3分の部分）を NiceMill で解析した作業の画面です（CC BY 3.0、作者 TBF、改変あり：
   コマを切り出し、追跡の枠と番号、画面の文字を重ねたもの）。`readme_step5_*.png` は、その画面の一部を切り出したものです。
-  `readme_demo.gif` は、同じクリップから NiceMill が作った振り返り動画（#8 さんのハイライト）の一部で、`readme_overview.png` は、それらの画面から組んだ説明の図です。
+  `readme_demo.gif` は、同じクリップで NiceMill の追跡の枠を表示した画面を録画したもので、`readme_overview.png` は、それらの画面から組んだ説明の図です。
   名前は、NiceMill が背番号の読み取りから付けた「#8」などで、実名は入っていません。文は AI が作ったもので、
   「1回直したあと」の画面は、説明のために一度言い回しを直したものです。
 - `docs/court_reg/samsunspor_tbf.json` は、上の1本目のクリップの上で測ったコートの登録です。
@@ -311,7 +311,7 @@ NiceMill/
 
 **NiceMill** turns videos of group activities and games into short positive-feedback texts, one per person, each with
 the video scenes it is based on. It runs a vision-language model (VLM) on your own machine; videos are never sent to
-external services. The animation at the top is part of a review video NiceMill made from a public game video.
+external services. The animation at the top shows NiceMill tracking each player in a public game video.
 
 | Feature | What it means |
 |---|---|
@@ -449,8 +449,8 @@ used by the engine, is AGPL-3.0; the code in this repository does not import it)
 Public clips only: Merkezefendi Belediyesi Denizli Basket - Samsunspor (24.01.20) (TBF, Wikimedia Commons, CC BY 3.0);
 wheelchair basketball (Splash tv, Wikimedia Commons, CC BY-SA 4.0). The images in `docs/images/` are screens of a work in
 which NiceMill analysed about three minutes of the first clip (CC BY 3.0, author TBF, modified: frames cut out, tracking
-boxes, numbers and screen text drawn over them); `readme_step5_*.png` are parts of those screens, `readme_demo.gif` is part of
-a review video NiceMill made from the same clip (the highlight of #8), and `readme_overview.png` is an explanatory figure
+boxes, numbers and screen text drawn over them); `readme_step5_*.png` are parts of those screens, `readme_demo.gif` is a recording
+of NiceMill's tracking boxes on the same clip, and `readme_overview.png` is an explanatory figure
 built from those screens. Names such as "#8" were
 given by NiceMill from jersey numbers (no real names); the texts were written by the AI, and the corrected one was edited
 once to show the screen.
