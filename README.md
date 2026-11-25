@@ -29,7 +29,7 @@
 NiceMill は、動画をローカルの VLM（画像と言葉を扱う AI）に見せて、選手（参加者）ごとの
 ポジティブ・フィードバック（よかった所を伝える文）を作ります。
 
-<p align="center"><img src="docs/images/readme_overview.png" width="900" alt="4つの段階：1 人に番号を付ける、2 AIが「よかった所」を文に、3 根拠の場面を見る、4 違っていれば直す"></p>
+<p align="center"><img src="docs/images/readme_overview.png" width="900" alt="3つの段階：1 選手を枠で追いかける、2 AIが「よかった所」を書く、3 もとの場面を見られる"></p>
 
 | 特徴 | 内容 |
 |---|---|
@@ -290,7 +290,7 @@ NiceMill/
   - 車いすバスケットボールの動画（Splash tv、Wikimedia Commons、[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)）
 - `docs/images/` の画像は、上の1本目のクリップ（約3分の部分）を NiceMill で解析した作業の画面です（CC BY 3.0、作者 TBF、改変あり：
   コマを切り出し、追跡の枠と番号、画面の文字を重ねたもの）。`readme_step5_*.png` は、その画面の一部を切り出したものです。
-  `readme_demo.gif` は、同じクリップで NiceMill の追跡の枠を表示した画面を録画したもので、`readme_overview.png` は、それらの画面から組んだ説明の図です。
+  `readme_demo.gif` は、同じクリップで NiceMill の追跡の枠を表示した画面を録画したもので、`readme_overview.png` は、同じクリップの映像と画面の文から組んだ説明の図です。
   名前は、NiceMill が背番号の読み取りから付けた「#8」などで、実名は入っていません。文は AI が作ったもので、
   「1回直したあと」の画面は、説明のために一度言い回しを直したものです。
 - `docs/court_reg/samsunspor_tbf.json` は、上の1本目のクリップの上で測ったコートの登録です。
@@ -451,7 +451,7 @@ wheelchair basketball (Splash tv, Wikimedia Commons, CC BY-SA 4.0). The images i
 which NiceMill analysed about three minutes of the first clip (CC BY 3.0, author TBF, modified: frames cut out, tracking
 boxes, numbers and screen text drawn over them); `readme_step5_*.png` are parts of those screens, `readme_demo.gif` is a recording
 of NiceMill's tracking boxes on the same clip, and `readme_overview.png` is an explanatory figure
-built from those screens. Names such as "#8" were
+built from the same clip and the text on those screens. Names such as "#8" were
 given by NiceMill from jersey numbers (no real names); the texts were written by the AI, and the corrected one was edited
 once to show the screen.
 
